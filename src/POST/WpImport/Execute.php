@@ -6,7 +6,6 @@ use ACMS_POST;
 use Acms\Services\Facades\Application;
 use Acms\Services\Facades\Common;
 use Acms\Services\Facades\Logger;
-use Acms\Services\Facades\LocalStorage;
 use Acms\Plugins\WPImport\Services\WXR\Parser;
 use Acms\Plugins\WPImport\Services\WXR\EntryExtractor;
 use Acms\Plugins\WPImport\Services\WXR\WXRCategory;

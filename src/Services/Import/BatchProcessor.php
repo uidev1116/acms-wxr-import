@@ -430,8 +430,6 @@ class BatchProcessor
             $entry->content = $processResult['content'];
 
 
-            if ($processResult['media_replaced'] > 0 || $processResult['link_replaced'] > 0) {
-            }
         } catch (\Throwable $th) {
             Logger::error('【WPImport plugin】コンテンツ処理エラー', Common::exceptionArray($th, [
                 'wp_post_id' => $entry->wpPostId,

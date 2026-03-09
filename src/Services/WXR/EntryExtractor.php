@@ -171,9 +171,28 @@ class EntryExtractor
             return null;
         }
 
-        try {
-            return new DateTime($dateString, new DateTimeZone('UTC'));
-        } catch (Exception $e) {
+        return new DateTime($dateString, new DateTimeZone('UTC'));
+    }
+
+    /**
+    * カテゴリー情報の抽出
+    *
+    * WXR Parserから取得したカテゴリー配列をWXRCategoryオブジェクトの配列に変換します。
+    *
+    * @param array<int, array{
+    *     term_id: int|null,
+    *     slug: string,
+    *     name: string,
+    *     taxonomy: string
+    * }> $categories カテゴリー情報の配列
+    * @return array<int, WXRCategory> WXRCategoryオブジェクトの配列
+    */
+    private function extractCategories(array $categories): array
+    {
+        $result = [];
+        foreach ($categories as $category) {
+            $wxrCategory = new WXRCategory($category['term_id'], $category['name']);
+
             $wxrCategory->slug = $category['slug'];
             $wxrCategory->parentId = $category['parent'] ?: null;
             $wxrCategory->description = $category['description'] ?? '';

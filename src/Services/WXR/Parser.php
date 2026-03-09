@@ -118,6 +118,33 @@ class Parser
             throw new Exception("WXRファイルが見つかりません: {$filePath}");
         }
 
+        $data = LocalStorage::get($filePath, dirname($filePath));
+        if (!$data) {
+            throw new Exception("WXRファイルの読み込みに失敗しました: {$filePath}");
+        }
+        $data = LocalStorage::removeIllegalCharacters($data); // 不正な文字コードを削除
+        $this->validateXml($data);
+        $this->reader->XML($data);
+
+        // カテゴリ・タグの定義を最初に取得
+        $this->extractTaxonomyDefinitions();
+
+        // XMLReaderを再初期化
+        $this->reader->close();
+        $this->reader = new XMLReader();
+        $this->reader->XML($data);
+
+        try {
+            $itemCount = 0;
+            while ($this->reader->read()) {
+                if ($this->reader->nodeType === XMLReader::ELEMENT && $this->reader->name === 'item') {
+                    $item = $this->extractItem();
+                    if ($item) {
+                        $itemCount++;
+                        yield $item;
+                    }
+                }
+            }
         } finally {
             $this->reader->close();
         }

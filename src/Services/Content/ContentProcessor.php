@@ -4,15 +4,10 @@ declare(strict_types=1);
 
 namespace Acms\Plugins\WPImport\Services\Content;
 
-use DOMDocument;
-use DOMXPath;
-use DOMElement;
 use SQL;
-use Acms\Services\Facades\Application as Container;
 use Acms\Services\Facades\Database;
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
-use Acms\Plugins\WPImport\Services\Import\MediaImporter;
 
 /**
  * WordPressコンテンツをa-blog cmsブロックエディター形式に変換する処理
@@ -23,13 +18,6 @@ class ContentProcessor
 
     /** @var array<string, string> メディアURLのマッピングキャッシュ */
     private array $mediaUrlCache = [];
-
-    private MediaImporter $mediaImporter;
-
-    public function __construct()
-    {
-        $this->mediaImporter = Container::make(MediaImporter::class);
-    }
 
     /**
      * WordPressコンテンツを処理してa-blog cmsブロックエディター形式に変換
@@ -570,127 +558,4 @@ class ContentProcessor
         }
         return null;
     }
-
-
-
-    /**
-     * メディアファイルかどうかを判定
-     *
-     * @param string $url
-     * @return bool
-     */
-    private function isMediaFile(string $url): bool
-    {
-        $extension = strtolower(pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
-
-        $mediaExtensions = [
-            'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
-            'pdf', 'doc', 'docx', 'xls', 'xlsx',
-            'zip', 'mp3', 'mp4', 'avi', 'mov'
-        ];
-
-        return in_array($extension, $mediaExtensions);
-    }
-
-
-    /**
-     * メディアURLキャッシュをクリア
-     */
-    public function clearMediaUrlCache(): void
-    {
-        $this->mediaUrlCache = [];
-    }
-
-    /**
-     * ショートコードを除去または変換
-     *
-     * @param string $content
-     * @return string
-     */
-    public function removeShortcodes(string $content): string
-    {
-        try {
-            // ネストしたショートコードを処理するため、複数回実行
-            $maxIterations = 3;
-            $iteration = 0;
-
-            do {
-                $originalContent = $content;
-
-                // 特定のショートコードを個別に処理
-                $content = $this->processSpecificShortcodes($content);
-
-                // 一般的なショートコード（ネスト対応）
-                $content = $this->processGeneralShortcodes($content);
-
-                $iteration++;
-            } while ($content !== $originalContent && $iteration < $maxIterations);
-
-            return $content;
-
-        } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】ショートコード処理エラー', Common::exceptionArray($e));
-            return $content; // エラー時は元のコンテンツを返す
-        }
-    }
-
-    /**
-     * 特定のショートコードを処理
-     *
-     * @param string $content
-     * @return string
-     */
-    private function processSpecificShortcodes(string $content): string
-    {
-        $patterns = [
-            // キャプション（属性付き対応）
-            '/\[caption(?:\s+[^\]]*?)?\](.*?)\[\/caption\]/s' => '$1',
-
-            // ギャラリー（IDや属性付き対応）
-            '/\[gallery(?:\s+[^\]]*?)?\]/i' => '',
-
-            // 埋め込み（URLやコンテンツ付き対応）
-            '/\[embed(?:\s+[^\]]*?)?\](.*?)\[\/embed\]/s' => '$1',
-
-            // YouTube、Vimeoなど
-            '/\[youtube(?:\s+[^\]]*?)?\]([^\[]*)\[\/youtube\]/i' => '$1',
-            '/\[vimeo(?:\s+[^\]]*?)?\]([^\[]*)\[\/vimeo\]/i' => '$1',
-
-            // コンタクトフォーム
-            '/\[contact-form-7(?:\s+[^\]]*?)?\]/i' => '',
-
-            // WordPress標準ショートコード
-            '/\[audio(?:\s+[^\]]*?)?\]/i' => '',
-            '/\[video(?:\s+[^\]]*?)?\]/i' => '',
-            '/\[playlist(?:\s+[^\]]*?)?\]/i' => '',
-        ];
-
-        foreach ($patterns as $pattern => $replacement) {
-            $content = preg_replace($pattern, $replacement, $content);
-        }
-
-        return $content;
-    }
-
-    /**
-     * 一般的なショートコードを処理（ネスト対応）
-     *
-     * @param string $content
-     * @return string
-     */
-    private function processGeneralShortcodes(string $content): string
-    {
-        // 自己完結型ショートコード [shortcode attr="value" /]
-        $content = preg_replace('/\[([a-zA-Z0-9_-]+)(?:\s+[^\]]*?)?\s*\/\]/', '', $content);
-
-        // 開始・終了タグ型ショートコード [shortcode]content[/shortcode]
-        $content = preg_replace('/\[([a-zA-Z0-9_-]+)(?:\s+[^\]]*?)?\](.*?)\[\/\1\]/s', '$2', $content);
-
-        // 単独ショートコード [shortcode] または [shortcode attr="value"]
-        $content = preg_replace('/\[([a-zA-Z0-9_-]+)(?:\s+[^\]]*?)?\]/', '', $content);
-
-        return $content;
-    }
-
-
 }

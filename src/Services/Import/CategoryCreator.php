@@ -64,30 +64,6 @@ class CategoryCreator
         return $mapping;
     }
 
-    /**
-     * WordPressタグからa-blog cmsタグを作成（a-blog cmsにはタグ機能がないため空の配列を返す）
-     *
-     * @param array<int, array{
-     *     term_id: int,
-     *     slug: string,
-     *     name: string,
-     *     description?: string,
-     *     taxonomy: string
-     * }> $tags
-     * @param array{
-     *     batch_size: int,
-     *     include_media: bool,
-     *     create_categories: bool,
-     *     create_tags: bool,
-     *     target_blog_id: int
-     * } $settings
-     * @return array<int, int> 空の配列（a-blog cmsにはタグ機能がない）
-     */
-    public function createTags(array $tags, array $settings): array
-    {
-        // タグ機能はa-blog cmsにないためスキップ
-        return [];
-    }
 
     /**
      * カテゴリーを階層順にソート
