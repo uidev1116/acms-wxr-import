@@ -121,13 +121,6 @@ class EntryExtractor
             // SEO関連メタデータの抽出
             $entry->seoData = $this->extractSeoData($wxrItem['postmeta']);
 
-            Logger::debug('【WPImport plugin】エントリー抽出完了', [
-                'post_id' => $entry->wpPostId,
-                'title' => $entry->title,
-                'type' => $entry->type,
-                'categories' => count($entry->categories),
-                'tags' => count($entry->tags)
-            ]);
 
             return $entry;
 
@@ -181,29 +174,6 @@ class EntryExtractor
         try {
             return new DateTime($dateString, new DateTimeZone('UTC'));
         } catch (Exception $e) {
-            Logger::warning('【WPImport plugin】日時解析エラー', ['date_string' => $dateString, 'error' => $e->getMessage()]);
-            return null;
-        }
-    }
-
-    /**
-     * カテゴリー情報の抽出
-     *
-     * WXR Parserから取得したカテゴリー配列をWXRCategoryオブジェクトの配列に変換します。
-     *
-     * @param array<int, array{
-     *     term_id: int|null,
-     *     slug: string,
-     *     name: string,
-     *     taxonomy: string
-     * }> $categories カテゴリー情報の配列
-     * @return array<int, WXRCategory> WXRCategoryオブジェクトの配列
-     */
-    private function extractCategories(array $categories): array
-    {
-        $result = [];
-        foreach ($categories as $category) {
-            $wxrCategory = new WXRCategory($category['term_id'], $category['name']);
             $wxrCategory->slug = $category['slug'];
             $wxrCategory->parentId = $category['parent'] ?: null;
             $wxrCategory->description = $category['description'] ?? '';

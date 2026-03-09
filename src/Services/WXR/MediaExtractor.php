@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Acms\Plugins\WPImport\Services\WXR;
 
+use Acms\Services\Facades\LocalStorage;
+
 /**
  * WordPressメディア（添付ファイル）の抽出処理
  */
@@ -14,7 +16,7 @@ class MediaExtractor
      *
      * @param array{
      *     post_type: string,
-     *     wp_post_id: int,
+     *     post_id: int,
      *     title: string,
      *     link: string,
      *     post_date: string,
@@ -22,8 +24,8 @@ class MediaExtractor
      *     creator: string,
      *     description: string,
      *     encoded_excerpt: string,
-     *     wp_post_parent: int,
-     *     wp_attachment_url: string,
+     *     post_parent: int,
+     *     attachment_url: string,
      *     wp_postmeta: array
      * } $item WXRアイテムデータ
      * @return WXRMedia|null メディア情報、無効な場合はnull
@@ -35,21 +37,21 @@ class MediaExtractor
         }
 
         // 必須フィールドの確認
-        if (!($item['wp_attachment_url'] ?? '')) {
+        if (!($item['attachment_url'] ?? '')) {
             return null;
         }
 
         $media = new WXRMedia();
-        $media->wpPostId = $item['wp_post_id'];
-        $media->wpParentId = $item['wp_post_parent'];
+        $media->wpPostId = $item['post_id'];
+        $media->wpParentId = $item['post_parent'];
         $media->title = $this->sanitizeText($item['title']);
-        $media->originalUrl = $item['wp_attachment_url'];
+        $media->originalUrl = $item['attachment_url'];
         $media->description = $this->sanitizeText($item['description']);
         $media->uploadDate = $this->parseDateTime($item['post_date_gmt']);
         $media->creator = $item['creator'];
 
         // ファイル情報を抽出
-        $this->extractFileInfo($media, $item['wp_postmeta']);
+        $this->extractFileInfo($media, $item['postmeta']);
 
         return $media;
     }
@@ -58,36 +60,42 @@ class MediaExtractor
      * ファイル情報を抽出してメディアオブジェクトに設定
      *
      * @param WXRMedia $media
-     * @param array<array{meta_key: string, meta_value: mixed}> $postMeta
+     * @param array<string, string> $postMeta
      */
     private function extractFileInfo(WXRMedia $media, array $postMeta): void
     {
-        foreach ($postMeta as $meta) {
-            switch ($meta['meta_key']) {
-                case '_wp_attached_file':
-                    $media->filePath = $meta['meta_value'];
-                    break;
-                case '_wp_attachment_metadata':
-                    if (is_string($meta['meta_value'])) {
-                        $metadata = unserialize($meta['meta_value']);
-                        if (is_array($metadata)) {
-                            $media->width = (int)($metadata['width'] ?? 0);
-                            $media->height = (int)($metadata['height'] ?? 0);
-                            $media->fileSize = (int)($metadata['filesize'] ?? 0);
-                            $media->mimeType = $metadata['mime-type'] ?? '';
-                            $media->sizes = $metadata['sizes'] ?? [];
-                        }
-                    }
-                    break;
-                case '_wp_attachment_image_alt':
-                    $media->altText = $this->sanitizeText((string)$meta['meta_value']);
-                    break;
+        // _wp_attached_file フィールドの処理
+        if (isset($postMeta['_wp_attached_file'])) {
+            $media->filePath = $postMeta['_wp_attached_file'];
+        }
+
+        // _wp_attachment_metadata フィールドの処理
+        if (isset($postMeta['_wp_attachment_metadata'])) {
+            $metadataValue = $postMeta['_wp_attachment_metadata'];
+            if (is_string($metadataValue)) {
+                $metadata = unserialize($metadataValue);
+                if (is_array($metadata)) {
+                    $media->width = (int)($metadata['width'] ?? 0);
+                    $media->height = (int)($metadata['height'] ?? 0);
+                    $media->fileSize = (int)($metadata['filesize'] ?? 0);
+                    $media->mimeType = $metadata['mime-type'] ?? '';
+                    $media->sizes = $metadata['sizes'] ?? [];
+                }
             }
         }
 
-        // ファイル名とMIMEタイプの推定
+        // _wp_attachment_image_alt フィールドの処理
+        if (isset($postMeta['_wp_attachment_image_alt'])) {
+            $media->altText = $this->sanitizeText($postMeta['_wp_attachment_image_alt']);
+        }
+
+        // ファイル名とMIMEタイプの推定（URL・ローカルパス両対応）
         if (!$media->fileName && $media->originalUrl !== null && $media->originalUrl !== '') {
-            $media->fileName = basename(parse_url($media->originalUrl, PHP_URL_PATH));
+            $path = parse_url($media->originalUrl, PHP_URL_PATH);
+            if ($path === null || $path === '') {
+                $path = $media->originalUrl;
+            }
+            $media->fileName = LocalStorage::mbBasename($path);
         }
 
         if (!$media->mimeType && $media->fileName !== null && $media->fileName !== '') {

@@ -10,6 +10,8 @@ use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\LocalStorage;
 use Acms\Services\Facades\Media;
 use Acms\Services\Facades\Common;
+use Acms\Services\Facades\PublicStorage;
+use Acms\Services\Facades\PrivateStorage;
 use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
 
 /**
@@ -34,12 +36,6 @@ class MediaImporter
      */
     public function importMedia(WXRMedia $media, array $settings, string $localPath): array
     {
-        if (config('media_library') !== 'on') {
-            return [
-                'success' => false,
-                'error' => 'メディアライブラリーが無効です'
-            ];
-        }
         try {
             // ファイルの存在確認
             if (!LocalStorage::exists($localPath)) {
@@ -49,17 +45,17 @@ class MediaImporter
                 ];
             }
 
-            // メディアファイルのアップロード処理
-            $uploadData = $this->processMediaUpload($localPath, $media, $settings);
-            if (!$uploadData) {
+            // ローカルファイルをメディアストレージに保存
+            $storedData = $this->storeMediaFromLocalPath($localPath, $media, $settings);
+            if (!$storedData) {
                 return [
                     'success' => false,
-                    'error' => 'メディアファイルのアップロードに失敗しました'
+                    'error' => 'メディアファイルの保存に失敗しました'
                 ];
             }
 
             // データベースに登録
-            $mediaId = $this->registerInDatabase($media, $uploadData, $settings);
+            $mediaId = $this->registerInDatabase($media, $storedData, $settings);
             if (!$mediaId) {
                 return [
                     'success' => false,
@@ -67,16 +63,11 @@ class MediaImporter
                 ];
             }
 
-            Logger::debug('【WPImport plugin】メディアインポート成功', [
-                'media_id' => $mediaId,
-                'wp_post_id' => $media->wpPostId,
-                'path' => $uploadData['path'],
-            ]);
 
             return [
                 'success' => true,
                 'media_id' => $mediaId,
-                'path' => $uploadData['path'],
+                'path' => $storedData['path'],
             ];
 
         } catch (\Throwable $th) {
@@ -94,31 +85,29 @@ class MediaImporter
 
 
     /**
-     * ダウンロード済みファイルをa-blog cmsメディアに登録
+     * ダウンロード済みローカルファイルをメディアストレージに保存
      *
      * @param string $localPath
      * @param WXRMedia $media
      * @param array $settings
      * @return array{path: string, type: string, name: string, size: string, filesize: int, extension: string}|null
      */
-    private function processMediaUpload(string $localPath, WXRMedia $media, array $settings): ?array
+    private function storeMediaFromLocalPath(string $localPath, WXRMedia $media, array $settings): ?array
     {
-        // ファイル情報を準備
         $fileInfo = $this->prepareFileInfo($localPath, $media);
         if (!$fileInfo) {
             return null;
         }
 
-        // MIMEタイプに基づいて適切なアップロード処理を実行
         $mimeType = $fileInfo['mime_type'];
 
         if (Media::isImageFile($mimeType)) {
-            return $this->uploadImageFromFile($fileInfo);
-        } elseif (Media::isSvgFile($mimeType)) {
-            return $this->uploadSvgFromFile($fileInfo);
-        } else {
-            return $this->uploadFileFromFile($fileInfo);
+            return $this->storeLocalImage($fileInfo);
         }
+        if (Media::isSvgFile($mimeType)) {
+            return $this->storeLocalSvg($fileInfo);
+        }
+        return $this->storeLocalFile($fileInfo);
     }
 
     /**
@@ -157,75 +146,101 @@ class MediaImporter
     }
 
     /**
-     * 画像ファイルをアップロード
+     * ローカル画像ファイルをメディアライブラリに保存
      *
-     * @param array $fileInfo
-     * @return array|null
+     * @param array{tmp_name: string, name: string, type: string, size: int, mime_type: string} $fileInfo
+     * @return array{path: string, type: string, name: string, size: string, filesize: int, extension: string}|null
      */
-    private function uploadImageFromFile(array $fileInfo): ?array
+    private function storeLocalImage(array $fileInfo): ?array
     {
-        // $_FILESの形式に合わせて一時的に設定
-        $_FILES['temp_import_file'] = $fileInfo;
-
         try {
-            $data = Media::uploadImage('temp_import_file');
-            return $data;
+            $data = Media::storeImage(
+                $fileInfo['tmp_name'],
+                $fileInfo['name'],
+                null,
+                true
+            );
+            $path = $data['path'];
+            return [
+                'path' => $path,
+                'type' => 'image',
+                'name' => $data['name'],
+                'size' => $data['size'],
+                'filesize' => PublicStorage::getFileSize(MEDIA_LIBRARY_DIR . $path),
+                'extension' => strtolower($data['type']),
+            ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】画像アップロードに失敗', [
+            Logger::error('【WPImport plugin】画像の保存に失敗', [
                 'error' => $e->getMessage(),
-                'file' => $fileInfo['name']
+                'file' => $fileInfo['name'],
             ]);
             return null;
-        } finally {
-            unset($_FILES['temp_import_file']);
         }
     }
 
     /**
-     * SVGファイルをアップロード
+     * ローカルSVGファイルをメディアライブラリに保存
      *
-     * @param array $fileInfo
-     * @return array|null
+     * @param array{tmp_name: string, name: string, type: string, size: int, mime_type: string} $fileInfo
+     * @return array{path: string, type: string, name: string, size: string, filesize: int, extension: string}|null
      */
-    private function uploadSvgFromFile(array $fileInfo): ?array
+    private function storeLocalSvg(array $fileInfo): ?array
     {
-        $_FILES['temp_import_file'] = $fileInfo;
-
         try {
-            $data = Media::uploadSvg($fileInfo['size'], 'temp_import_file');
-            return $data;
+            $data = Media::storeFile(
+                MEDIA_LIBRARY_DIR,
+                $fileInfo['tmp_name'],
+                $fileInfo['name'],
+                true
+            );
+            $path = $data['path'];
+            return [
+                'path' => $path,
+                'type' => 'svg',
+                'name' => $data['name'],
+                'size' => '',
+                'filesize' => PublicStorage::getFileSize(MEDIA_LIBRARY_DIR . $path),
+                'extension' => 'svg',
+            ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】SVGアップロードに失敗', [
+            Logger::error('【WPImport plugin】SVGの保存に失敗', [
                 'error' => $e->getMessage(),
-                'file' => $fileInfo['name']
+                'file' => $fileInfo['name'],
             ]);
             return null;
-        } finally {
-            unset($_FILES['temp_import_file']);
         }
     }
 
     /**
-     * 一般ファイルをアップロード
+     * ローカルファイルをメディアストレージに保存（PDF等）
      *
-     * @param array $fileInfo
-     * @return array|null
+     * @param array{tmp_name: string, name: string, type: string, size: int, mime_type: string} $fileInfo
+     * @return array{path: string, type: string, name: string, size: string, filesize: int, extension: string}|null
      */
-    private function uploadFileFromFile(array $fileInfo): ?array
+    private function storeLocalFile(array $fileInfo): ?array
     {
-        $_FILES['temp_import_file'] = $fileInfo;
-
         try {
-            $data = Media::uploadFile($fileInfo['size'], 'temp_import_file');
-            return $data;
+            $data = Media::storeFile(
+                MEDIA_STORAGE_DIR,
+                $fileInfo['tmp_name'],
+                $fileInfo['name'],
+                true
+            );
+            $path = $data['path'];
+            return [
+                'path' => $path,
+                'type' => 'file',
+                'name' => $data['name'],
+                'size' => '',
+                'filesize' => PrivateStorage::getFileSize(MEDIA_STORAGE_DIR . $path),
+                'extension' => strtolower($data['type']),
+            ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】ファイルアップロードに失敗', [
+            Logger::error('【WPImport plugin】ファイルの保存に失敗', [
                 'error' => $e->getMessage(),
-                'file' => $fileInfo['name']
+                'file' => $fileInfo['name'],
             ]);
             return null;
-        } finally {
-            unset($_FILES['temp_import_file']);
         }
     }
 
@@ -233,7 +248,7 @@ class MediaImporter
      * データベースにメディア情報を登録
      *
      * @param WXRMedia $media
-     * @param array $uploadData Media::upload*から返されたデータ
+     * @param array $storedData Media::store*から返されたデータ（insertMedia用に正規化済み）
      * @param array{
      *     batch_size: int,
      *     include_media: bool,
@@ -243,7 +258,7 @@ class MediaImporter
      * } $settings
      * @return int|null メディアID（失敗時はnull）
      */
-    private function registerInDatabase(WXRMedia $media, array $uploadData, array $settings): ?int
+    private function registerInDatabase(WXRMedia $media, array $storedData, array $settings): ?int
     {
         try {
             Database::connection()->beginTransaction();
@@ -251,9 +266,8 @@ class MediaImporter
             // メディアIDを取得
             $mediaId = (int)Database::query(SQL::nextval('media_id', dsn()), 'seq');
 
-            // Media Facadeのメソッドを使用してメディアデータを挿入
-            $mediaData = $this->prepareMediaData($media, $uploadData, $settings);
-            Media::insertMedia($mediaId, $mediaData, $settings['target_blog_id']);
+            $mediaData = $this->prepareMediaData($media, $storedData, $settings);
+            Media::insertMedia($mediaId, $mediaData);
 
             Database::connection()->commit();
 
@@ -272,19 +286,19 @@ class MediaImporter
      * Media Facade用のデータを準備
      *
      * @param WXRMedia $media
-     * @param array $uploadData
+     * @param array $storedData
      * @param array $settings
      * @return array
      */
-    private function prepareMediaData(WXRMedia $media, array $uploadData, array $settings): array
+    private function prepareMediaData(WXRMedia $media, array $storedData, array $settings): array
     {
         $data = [
-            'type' => $uploadData['type'],
-            'extension' => $uploadData['extension'],
-            'path' => $uploadData['path'],
-            'name' => $uploadData['name'],
-            'filesize' => $uploadData['filesize'],
-            'size' => $uploadData['size'] ?? '',
+            'type' => $storedData['type'],
+            'extension' => $storedData['extension'],
+            'path' => $storedData['path'],
+            'name' => $storedData['name'],
+            'filesize' => $storedData['filesize'],
+            'size' => $storedData['size'] ?? '',
         ];
 
         // WordPressから引き継ぐメタデータをカスタムフィールドに設定

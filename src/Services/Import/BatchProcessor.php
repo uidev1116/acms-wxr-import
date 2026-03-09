@@ -11,7 +11,7 @@ use Acms\Plugins\WPImport\Services\WXR\WXREntry;
 use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
 use Acms\Plugins\WPImport\Services\WXR\WXRCategory;
 use Acms\Plugins\WPImport\Services\Media\Downloader;
-use Acms\Plugins\WPImport\Services\Content\UrlRewriter;
+use Acms\Plugins\WPImport\Services\Content\ContentProcessor;
 
 /**
  * 最適化されたバッチ処理システム
@@ -30,8 +30,8 @@ class BatchProcessor
     /** @var Downloader */
     private Downloader $downloader;
 
-    /** @var UrlRewriter */
-    private UrlRewriter $urlRewriter;
+    /** @var ContentProcessor */
+    private ContentProcessor $contentProcessor;
 
     /** @var int メモリ使用量の上限（バイト） */
     private int $memoryLimit;
@@ -49,7 +49,7 @@ class BatchProcessor
         $this->mediaImporter = Container::make(MediaImporter::class);
         $this->categoryCreator = Container::make(CategoryCreator::class);
         $this->downloader = Container::make(Downloader::class);
-        $this->urlRewriter = Container::make(UrlRewriter::class);
+        $this->contentProcessor = Container::make(ContentProcessor::class);
 
         // メモリ制限の80%を上限とする
         $this->memoryLimit = (int)(memory_get_usage() * 0.8);
@@ -246,16 +246,6 @@ class BatchProcessor
         foreach (array_chunk($entries, $batchSize) as $batchIndex => $batch) {
             $batchStartTime = microtime(true);
 
-            // メモリ使用量チェック
-            // if ($this->isMemoryLimitReached()) {
-            //     $this->forceGarbageCollection();
-
-            //     if ($this->isMemoryLimitReached()) {
-            //         $progressLogger->addMessage('メモリ不足のため処理を停止しました', 0, 1, true);
-            //         break;
-            //     }
-            // }
-
             $progressLogger->addMessage(
                 "エントリーバッチ " . ($batchIndex + 1) . "/" . ceil($totalEntries / $batchSize) . " 処理中",
                 0, 1, false
@@ -263,10 +253,8 @@ class BatchProcessor
 
             foreach ($batch as $entry) {
                 try {
-                    // URL書き換えを適用
-                    if (count($mediaMapping) > 0) {
-                        $this->applyUrlRewriting($entry, $mediaMapping);
-                    }
+                    // コンテンツ処理を適用（メディアマッピングがなくても実行）
+                    $this->applyContentProcessing($entry, $mediaMapping);
 
                     $result = $this->entryImporter->importEntry($entry, $settings, $categoryMap);
                     $results[] = $result;
@@ -275,11 +263,7 @@ class BatchProcessor
                         $successCount++;
                     } else {
                         $errorCount++;
-                        Logger::warning('【WPImport plugin】エントリー処理失敗', [
-                            'wp_post_id' => $entry->wpPostId,
-                            'title' => $entry->title,
-                            'error' => $result['error'] ?? 'Unknown error'
-                        ]);
+                        // エントリー処理失敗
                     }
                 } catch (\Throwable $th) {
                     $errorCount++;
@@ -343,6 +327,7 @@ class BatchProcessor
         $errorCount = 0;
         $results = [];
 
+        // メディア処理開始
         $progressLogger->addMessage("メディア処理開始: {$totalMedia}件", 0, 1, false);
 
         foreach (array_chunk($medias, $batchSize) as $batchIndex => $batch) {
@@ -427,30 +412,28 @@ class BatchProcessor
     }
 
     /**
-     * エントリーにURL書き換えを適用
+     * エントリーにコンテンツ処理を適用
      *
      * @param WXREntry $entry
      * @param array<int, int> $mediaMapping
      */
-    private function applyUrlRewriting(WXREntry $entry, array $mediaMapping): void
+    private function applyContentProcessing(WXREntry $entry, array $mediaMapping): void
     {
         try {
-            $rewriteResult = $this->urlRewriter->rewriteUrls($entry->content, [
-                'media_mapping' => $mediaMapping
+
+            $originalContent = $entry->content;
+            $processResult = $this->contentProcessor->processContent($entry->content, [
+                'media_mapping' => $mediaMapping,
+                '_original_content' => $originalContent
             ]);
 
-            $entry->content = $rewriteResult['content'];
+            $entry->content = $processResult['content'];
 
-            if ($rewriteResult['media_replaced'] > 0 || $rewriteResult['link_replaced'] > 0) {
-                Logger::debug('【WPImport plugin】URL書き換え実行', [
-                    'wp_post_id' => $entry->wpPostId,
-                    'title' => $entry->title,
-                    'media_replaced' => $rewriteResult['media_replaced'],
-                    'link_replaced' => $rewriteResult['link_replaced'],
-                ]);
+
+            if ($processResult['media_replaced'] > 0 || $processResult['link_replaced'] > 0) {
             }
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】URL書き換えエラー', Common::exceptionArray($th, [
+            Logger::error('【WPImport plugin】コンテンツ処理エラー', Common::exceptionArray($th, [
                 'wp_post_id' => $entry->wpPostId,
                 'title' => $entry->title,
             ]));
@@ -511,36 +494,6 @@ class BatchProcessor
     }
 
     /**
-     * メモリ制限に達しているかチェック
-     *
-     * @return bool
-     */
-    private function isMemoryLimitReached(): bool
-    {
-        return memory_get_usage(true) > $this->memoryLimit;
-    }
-
-    /**
-     * 強制的にガベージコレクションを実行
-     */
-    private function forceGarbageCollection(): void
-    {
-        if (function_exists('gc_collect_cycles')) {
-            $before = memory_get_usage(true);
-            $collected = gc_collect_cycles();
-            $after = memory_get_usage(true);
-
-            Logger::debug('【WPImport plugin】ガベージコレクション実行', [
-                'collected_cycles' => $collected,
-                'memory_freed' => $before - $after,
-                'memory_before' => $before,
-                'memory_after' => $after,
-            ]);
-        }
-    }
-
-
-    /**
      * カテゴリー作成処理
      *
      * @param array<WXRCategory> $categories
@@ -556,17 +509,9 @@ class BatchProcessor
     private function processCategoryCreation(array $categories, array $settings): array
     {
         try {
-            Logger::debug('【WPImport plugin】カテゴリー作成開始', [
-                'category_count' => count($categories),
-                'target_blog_id' => $settings['target_blog_id']
-            ]);
 
             $categoryMap = $this->categoryCreator->createCategories($categories, $settings);
 
-            Logger::debug('【WPImport plugin】カテゴリー作成完了', [
-                'created_count' => count($categoryMap),
-                'mapping' => $categoryMap
-            ]);
 
             return $categoryMap;
 
@@ -581,20 +526,6 @@ class BatchProcessor
 
             // エラーが発生した場合は空のマッピングを返す
             return [];
-        }
-    }
-
-    /**
-     * 設定を更新
-     *
-     * @param array{
-     *     memory_limit?: int
-     * } $config
-     */
-    public function configure(array $config): void
-    {
-        if (isset($config['memory_limit'])) {
-            $this->memoryLimit = $config['memory_limit'];
         }
     }
 }

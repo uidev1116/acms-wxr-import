@@ -55,8 +55,6 @@ class Parser
 
     public function __construct()
     {
-        // XMLセキュリティ設定
-        libxml_disable_entity_loader(true);
         $this->reader = new XMLReader();
     }
 
@@ -120,37 +118,6 @@ class Parser
             throw new Exception("WXRファイルが見つかりません: {$filePath}");
         }
 
-        Logger::info('WXR解析開始', ['file' => basename($filePath), 'size' => filesize($filePath)]);
-
-        $data = LocalStorage::get($filePath, dirname($filePath));
-        if (!$data) {
-            throw new Exception("WXRファイルの読み込みに失敗しました: {$filePath}");
-        }
-        $data = LocalStorage::removeIllegalCharacters($data); // 不正な文字コードを削除
-        $this->validateXml($data);
-        $this->reader->XML($data);
-
-        // カテゴリ・タグの定義を最初に取得
-        $this->extractTaxonomyDefinitions();
-
-        // XMLReaderを再初期化
-        $this->reader->close();
-        $this->reader = new XMLReader();
-        $this->reader->XML($data);
-
-        try {
-            $itemCount = 0;
-            while ($this->reader->read()) {
-                if ($this->reader->nodeType === XMLReader::ELEMENT && $this->reader->name === 'item') {
-                    $item = $this->extractItem();
-                    if ($item) {
-                        $itemCount++;
-                        yield $item;
-                    }
-                }
-            }
-
-            Logger::info('WXR解析完了', ['total_items' => $itemCount]);
         } finally {
             $this->reader->close();
         }
@@ -339,10 +306,6 @@ class Parser
             }
         }
 
-        Logger::debug('タクソノミー定義取得完了', [
-            'categories_count' => count($this->categoriesMap),
-            'tags_count' => count($this->tagsMap)
-        ]);
     }
 
     /**
@@ -473,13 +436,6 @@ class Parser
                 ];
             }
 
-            Logger::debug('カテゴリー・タグの抽出', [
-                'slug' => $slug,
-                'name' => $name,
-                'taxonomy' => $taxonomy,
-                'nicename_attr' => $node->getAttribute('nicename'),
-                'textContent' => $node->textContent
-            ]);
         }
 
         // 重複slug排除

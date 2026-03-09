@@ -85,7 +85,7 @@ class CategoryCreator
      */
     public function createTags(array $tags, array $settings): array
     {
-        Logger::info('【WPImport plugin】タグ機能はa-blog cmsにないため、' . count($tags) . '件のタグをスキップします');
+        // タグ機能はa-blog cmsにないためスキップ
         return [];
     }
 
@@ -193,18 +193,7 @@ class CategoryCreator
             // フルテキスト検索用データを保存
             Common::saveFulltext('cid', $categoryId, Common::loadCategoryFulltext($categoryId));
 
-            Logger::info('【WPImport plugin】「' . $wxrCategory->getDisplayName() . '」カテゴリーを作成しました（階層対応）', [
-                'category_id' => $categoryId,
-                'name' => $wxrCategory->getDisplayName(),
-                'code' => $code,
-                'wp_term_id' => $wxrCategory->termId,
-                'parent' => $parentId,
-                'sort' => $sort,
-                'left' => $left,
-                'right' => $right,
-                'status' => $status,
-                'optimization' => 'single_step_with_hierarchy'
-            ]);
+            // カテゴリー作成成功
 
             return intval($categoryId);
 

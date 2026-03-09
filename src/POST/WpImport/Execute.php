@@ -137,10 +137,6 @@ class Execute extends ACMS_POST
 
         try {
             $lockService->tryLock();
-            Logger::info('【WPImport plugin】WordPress移行処理開始', [
-                'file' => LocalStorage::mbBasename($filePath),
-                'settings' => $settings
-            ]);
 
             // WXR解析
             $logger->addMessage('WXRファイルを解析中...', 5, 1, false);
@@ -179,12 +175,6 @@ class Execute extends ACMS_POST
             // BatchProcessorで統合処理を実行（カテゴリー、メディア、エントリーを一元処理）
             $logger->addMessage('統合処理を開始（カテゴリー、メディア、エントリー）...', 5, 1, false);
 
-            Logger::debug('【WPImport plugin】統合処理開始', [
-                'entries' => $entries,
-                'medias' => $medias,
-                'categories' => $categories,
-                'settings' => $settings
-            ]);
             $batchResults = $this->batchProcessor->processAll(
                 $entries,
                 $medias,
@@ -196,18 +186,6 @@ class Execute extends ACMS_POST
             $logger->addMessage('WordPress移行が完了しました', 10, 1, true);
             $logger->success();
 
-            Logger::info('【WPImport plugin】WordPress移行処理完了', [
-                'entries_total' => count($entries),
-                'entries_success' => $batchResults['entry_success'],
-                'entries_error' => $batchResults['entry_error'],
-                'media_total' => count($medias),
-                'media_success' => $batchResults['media_success'],
-                'media_error' => $batchResults['media_error'],
-                'categories_total' => count($categories),
-                'categories_success' => $batchResults['category_success'],
-                'processing_time' => $batchResults['total_time'],
-                'memory_peak' => $batchResults['memory_peak']
-            ]);
 
         } catch (\Throwable $th) {
             Logger::error('【WPImport plugin】移行処理中のエラー', Common::exceptionArray($th));

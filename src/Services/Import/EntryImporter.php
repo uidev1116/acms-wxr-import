@@ -94,11 +94,6 @@ class EntryImporter
 
             Database::connection()->commit();
 
-            Logger::debug('【WPImport plugin】エントリー作成成功', [
-                'eid' => $eid,
-                'wp_post_id' => $entry->wpPostId,
-                'title' => $entry->title
-            ]);
 
             return [
                 'success' => true,
@@ -442,11 +437,6 @@ class EntryImporter
             $success = $contentUnitCreator->createContentUnit($entry, $eid, $settings['target_blog_id']);
 
             if (!$success) {
-                Logger::warning('【WPImport plugin】ユニット作成に失敗しました', [
-                    'eid' => $eid,
-                    'wp_post_id' => $entry->wpPostId,
-                    'title' => $entry->title
-                ]);
             }
         } catch (\Throwable $th) {
             Logger::error('【WPImport plugin】ユニット作成でエラーが発生', Common::exceptionArray($th, [

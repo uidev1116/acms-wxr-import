@@ -33,10 +33,7 @@ class ContentUnitCreator
         try {
             // 本文が空の場合は何もしない
             if (trim($entry->content) === '') {
-                Logger::debug('【WPImport plugin】本文が空のためユニット作成をスキップ', [
-                    'eid' => $eid,
-                    'wp_post_id' => $entry->wpPostId
-                ]);
+                // 本文が空のためユニット作成をスキップ
                 return true;
             }
 
@@ -66,19 +63,10 @@ class ContentUnitCreator
             // ユニットを保存
             $this->unitRepository->saveAllUnits($collection, $eid, $bid);
 
-            Logger::debug('【WPImport plugin】BlockEditorユニット作成成功', [
-                'eid' => $eid,
-                'wp_post_id' => $entry->wpPostId,
-                'unit_id' => $unitId,
-                'content_length' => strlen($processedContent)
-            ]);
 
             return true;
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】BlockEditorユニット作成エラー', Common::exceptionArray($th, [
-                'eid' => $eid,
-                'wp_post_id' => $entry->wpPostId
-            ]));
+            // BlockEditorユニット作成エラーを無視
 
             return false;
         }

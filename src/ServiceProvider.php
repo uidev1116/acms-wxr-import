@@ -95,7 +95,7 @@ class ServiceProvider extends ACMS_App
         $container->singleton(\Acms\Plugins\WPImport\Services\Import\CategoryCreator::class, \Acms\Plugins\WPImport\Services\Import\CategoryCreator::class);
 
         // コンテンツ処理サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\Content\UrlRewriter::class, \Acms\Plugins\WPImport\Services\Content\UrlRewriter::class);
+        $container->singleton(\Acms\Plugins\WPImport\Services\Content\ContentProcessor::class, \Acms\Plugins\WPImport\Services\Content\ContentProcessor::class);
 
         $container->singleton('wp-import.progress-lock', function () {
             return new CommonLock(CACHE_DIR . 'wp-import-progress-lock');

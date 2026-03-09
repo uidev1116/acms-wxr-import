@@ -6,7 +6,6 @@ namespace Acms\Plugins\WPImport\Services\Media;
 
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\LocalStorage;
-use Acms\Services\Facades\Http;
 use Acms\Services\Facades\Common;
 use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
 
@@ -85,36 +84,31 @@ class Downloader
 
             // 既にダウンロード済みの場合はスキップ
             if (LocalStorage::exists($localPath)) {
-                Logger::debug('【WPImport plugin】メディアファイルは既に存在します', [
-                    'wp_post_id' => $media->wpPostId,
-                    'url' => $media->originalUrl,
-                    'local_path' => $localPath
-                ]);
+                // メディアファイルは既に存在
 
                 return [
                     'success' => true,
                     'local_path' => $localPath,
                     'file_name' => basename($localPath),
-                    'file_size' => filesize($localPath),
+                    'file_size' => (int)filesize($localPath),
                 ];
             }
 
-            // レート制限を適用
-            $this->applyRateLimit($media->originalUrl);
+            // wp:attachment_url をローカルパスに置換している場合はコピー、それ以外はHTTPダウンロード
+            $sourcePath = $this->resolveLocalFilePath($media->originalUrl);
+            if ($sourcePath !== null) {
+                $downloadResult = $this->copyLocalFile($sourcePath, $localPath);
+            } else {
+                // レート制限を適用
+                $this->applyRateLimit($media->originalUrl);
+                $downloadResult = $this->downloadFile($media->originalUrl, $localPath);
+            }
 
-            // ファイルをダウンロード
-            $downloadResult = $this->downloadFile($media->originalUrl, $localPath);
 
             if (!$downloadResult['success']) {
                 return $downloadResult;
             }
 
-            Logger::info('【WPImport plugin】メディアファイルダウンロード成功', [
-                'wp_post_id' => $media->wpPostId,
-                'original_url' => $media->originalUrl,
-                'local_path' => $localPath,
-                'file_size' => $downloadResult['file_size']
-            ]);
 
             return $downloadResult;
 
@@ -130,7 +124,114 @@ class Downloader
             ];
         }
     }
-    
+
+    /**
+     * wp:attachment_url がローカルパス（または file://）かどうかを判定し、実在する絶対パスを返す
+     *
+     * XML 内の wp:attachment_url をローカルファイルパスに置換した場合に使用。
+     * 例: /Users/foo/Downloads/image.jpg や file:///path/to/file.jpg
+     *
+     * @param string $urlOrPath 元のURL、またはローカルパス／file:// URL
+     * @return string|null 実在する絶対パス。ローカルファイルでない、または存在しない場合は null
+     */
+    private function resolveLocalFilePath(string $urlOrPath): ?string
+    {
+        $path = $urlOrPath;
+        if (str_starts_with($path, 'file://')) {
+            $path = substr($path, 7);
+            // file:///C:/foo -> C:/foo（Windows）、file:///path -> /path（Unix）
+            if (strlen($path) >= 3 && $path[0] === '/' && ctype_alpha($path[1]) && $path[2] === ':') {
+                $path = substr($path, 1);
+            } elseif (strlen($path) >= 1 && $path[0] !== '/') {
+                $path = '/' . $path;
+            }
+        } elseif (preg_match('#^https?://#i', $path)) {
+            return null;
+        }
+        $path = str_replace('\\', '/', $path);
+
+        // 絶対パスまたは file:// の場合はそのまま存在チェック
+        if (@is_file($path)) {
+            $resolved = @realpath($path);
+            return $resolved !== false ? $resolved : null;
+        }
+
+        // ドキュメントルート相対（例: /wp-content/uploads/2026/01/sample.png）の場合は DOCUMENT_ROOT と結合して解決
+        if (str_starts_with($path, '/') && defined('DOCUMENT_ROOT')) {
+            $docRootPath = rtrim(DOCUMENT_ROOT, '/') . $path;
+            if (@is_file($docRootPath)) {
+                $resolved = @realpath($docRootPath);
+                return $resolved !== false ? $resolved : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * ローカルファイルをダウンロード用ディレクトリにコピー
+     *
+     * @param string $sourcePath コピー元の絶対パス
+     * @param string $localPath コピー先（プラグインのダウンロードディレクトリ内）
+     * @return array{
+     *     success: bool,
+     *     local_path?: string,
+     *     file_name?: string,
+     *     file_size?: int,
+     *     error?: string
+     * }
+     */
+    private function copyLocalFile(string $sourcePath, string $localPath): array
+    {
+        try {
+            $dir = dirname($localPath);
+            if (!LocalStorage::exists($dir)) {
+                if (!LocalStorage::makeDirectory($dir)) {
+                    return [
+                        'success' => false,
+                        'error' => 'ディレクトリの作成に失敗しました: ' . $dir,
+                    ];
+                }
+            }
+
+            $content = @file_get_contents($sourcePath);
+            if ($content === false) {
+                return [
+                    'success' => false,
+                    'error' => 'ローカルファイルの読み込みに失敗しました: ' . $sourcePath,
+                ];
+            }
+
+            $fileSize = strlen($content);
+            if ($fileSize > $this->maxFileSize) {
+                return [
+                    'success' => false,
+                    'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($fileSize),
+                ];
+            }
+
+            if (!LocalStorage::put($localPath, $content)) {
+                return [
+                    'success' => false,
+                    'error' => 'ファイルのコピーに失敗しました: ' . $localPath,
+                ];
+            }
+
+
+            return [
+                'success' => true,
+                'local_path' => $localPath,
+                'file_name' => basename($localPath),
+                'file_size' => $fileSize,
+            ];
+        } catch (\Throwable $th) {
+            return [
+                'success' => false,
+                'error' => 'コピー中にエラーが発生しました: ' . $th->getMessage(),
+            ];
+        }
+    }
+
     /**
      * ファイルをダウンロード
      *
@@ -158,11 +259,16 @@ class Downloader
                 }
             }
 
-            // a-blog cms HTTP Facadeを使用してダウンロード
+            // HTTPダウンロード
             try {
-                $httpClient = Http::init($url, 'GET')->send();
-                $body = $httpClient->getResponseBody();
-                $httpCode = (int) $httpClient->getResponseHeader('http_code');
+                $result = $this->download($url);
+
+                if (!$result['success']) {
+                    return $result;
+                }
+
+                $body = $result['body'];
+                $httpCode = $result['http_code'];
 
                 if ($httpCode !== 200) {
                     return [
@@ -326,17 +432,69 @@ class Downloader
             if ($timeDiff < $requiredDelay) {
                 $sleepTime = ($requiredDelay - $timeDiff) * 1000000; // 秒をマイクロ秒に変換
                 usleep((int)$sleepTime);
-                Logger::debug('【WPImport plugin】レート制限適用', [
-                    'domain' => $domain,
-                    'sleep_time_ms' => $sleepTime / 1000,
-                    'last_access' => self::$lastAccessTimes[$domain],
-                    'now' => $now
-                ]);
+                // レート制限適用
             }
         }
 
         // 最後のアクセス時刻を更新
         self::$lastAccessTimes[$domain] = microtime(true);
+    }
+
+    /**
+     * HTTPダウンロード
+     *
+     * @param string $url
+     * @return array{
+     *     success: bool,
+     *     body?: string,
+     *     http_code?: int,
+     *     error?: string
+     * }
+     */
+    private function download(string $url): array
+    {
+        if (!function_exists('curl_init')) {
+            return [
+                'success' => false,
+                'error' => 'cURL拡張が利用できません'
+            ];
+        }
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_USERAGENT => 'WPImport Plugin/1.0 (a-blog cms)',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            // レスポンスサイズ制限
+            CURLOPT_MAXFILESIZE => $this->maxFileSize,
+            // ヘッダーを含めない
+            CURLOPT_HEADER => false,
+        ]);
+
+        $body = curl_exec($curl);
+        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $error = curl_error($curl);
+
+        if ($body === false) {
+            return [
+                'success' => false,
+                'error' => 'HTTPダウンロードエラー: ' . ($error ?: 'Unknown error')
+            ];
+        }
+
+
+        return [
+            'success' => true,
+            'body' => $body,
+            'http_code' => (int)$httpCode
+        ];
     }
 
     /**
