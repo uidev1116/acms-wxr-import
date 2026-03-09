@@ -93,16 +93,38 @@ src/
 ## エラーハンドリング
 
 ### ログ出力
+
+#### 実装済みログレベル戦略
+
 ```php
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
 
-// 情報ログ
-Logger::info('WXR解析開始', ['file' => $fileName]);
+// エラーログ（致命的エラー）- 必須
+Logger::error('【WPImport plugin】エントリー処理エラー', Common::exceptionArray($e, [
+    'wp_post_id' => $entry->wpPostId,
+    'title' => $entry->title,
+]));
 
-// エラーログ
-Logger::error('インポートエラー', Common::exceptionArray($e));
+// 警告ログ（処理継続可能）- 重要な問題
+Logger::warning('【WPImport plugin】メディアダウンロード失敗', [
+    'url' => $media->url,
+    'error' => $downloadResult['error']
+]);
+
+// 情報ログ（重要な処理完了）- 運用監視用
+Logger::info('【WPImport plugin】バッチ処理完了', [
+    'processed_count' => $processedCount,
+    'success_count' => $successCount,
+    'error_count' => $errorCount
+]);
 ```
+
+**ログ出力ルール**：
+- プレフィックス `【WPImport plugin】` を必ず付与
+- エラー時は `Common::exceptionArray()` でスタックトレース含む
+- 処理継続可能なエラーは `warning` レベル
+- デバッグログは本番では出力しない（削除済み）
 
 [監査ログ機能についての開発者向けドキュメント](https://developer.a-blogcms.jp/document/auditlog/entry-3974.html)
 
@@ -228,26 +250,85 @@ test: WXRParserの単体テスト追加
 - 機能開発: `feature/機能名`
 - バグ修正: `fix/問題名`
 
+## 実装固有ガイドライン
+
+### ContentProcessor開発
+
+#### WordPressブロック処理
+```php
+// ブロック抽出パターン（実装済み）
+private function extractWordPressBlocks(string $content): array
+{
+    $pattern = '/<!-- wp:(\w+)(?:\s+(\{[^}]*\}))?\s*-->(.*?)<!-- \/wp:\1\s*-->/s';
+    // 実装: JSON属性デコード、エラーハンドリング含む
+}
+
+// a-blog cmsブロック生成
+private function buildImageBlockHtml(array $blockInfo, int $mediaId, string $newUrl): string
+{
+    // data-type="imageBlock" 必須
+    // data-mid でメディアID連携
+    // figcaption でキャプション継承
+}
+```
+
+#### URL置換最適化
+```php
+// URLキャッシュ活用（実装済み）
+private array $mediaUrlCache = [];
+
+private function replaceMediaUrl(string $url, array $mediaMapping): string
+{
+    // キャッシュチェック -> DB検索 -> パターンマッチの順
+}
+```
+
+### BatchProcessor開発
+
+#### 動的最適化実装
+```php
+// メモリベース調整（実装済み）
+private function optimizeBatchSize(int $requestedSize, int $totalItems): int
+{
+    $memoryUsage = memory_get_usage(true);
+    $availableMemory = $this->memoryLimit - $memoryUsage;
+
+    // 30%以下で削減、70%以上で増加
+    // MIN_BATCH_SIZE: 5, MAX_BATCH_SIZE: 100
+}
+
+// エラー分離処理
+foreach ($batch as $item) {
+    try {
+        // 個別処理
+    } catch (\Throwable $th) {
+        // ログして継続（全体停止させない）
+        Logger::error('処理エラー', Common::exceptionArray($th));
+    }
+}
+```
+
 ## パフォーマンス
 
 ### メモリ効率
 ```php
-// Generatorを使用してメモリ効率化
+// Generatorを使用してメモリ効率化（実装済み）
 public function parse(string $filePath): \Generator
 {
     foreach ($this->parseItems($filePath) as $item) {
         yield $item; // 一度に全てロードしない
     }
 }
+
+// メモリ監視（実装済み）
+$this->memoryLimit = (int)(memory_get_usage() * 0.8);
 ```
 
-### 実行時間制限
+### 負荷軽減
 ```php
-// 大量データ処理時の時間管理
-private function shouldPause(): bool
-{
-    return (time() - $this->startTime) > $this->maxExecutionTime;
-}
+// バッチ間遅延（実装済み）
+usleep(100000); // エントリー処理：0.1秒
+usleep(200000); // メディア処理：0.2秒（外部サーバー負荷軽減）
 ```
 
 ## 開発環境セットアップ

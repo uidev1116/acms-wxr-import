@@ -57,31 +57,31 @@ POST/WpImport/
 ```
 Services/
 ├── WXR/
-│   ├── Parser.php           # XMLパーサー
-│   ├── EntryExtractor.php   # エントリーデータ抽出
-│   ├── MediaExtractor.php   # メディアデータ抽出
-│   ├── WXREntry.php         # エントリーモデル
-│   ├── WXRMedia.php         # メディアモデル
-│   ├── WXRCategory.php      # カテゴリーモデル
-│   └── WXRTag.php           # タグモデル
+│   ├── Parser.php           # XMLパーサー ✅
+│   ├── EntryExtractor.php   # エントリーデータ抽出 ✅
+│   ├── MediaExtractor.php   # メディアデータ抽出 ✅
+│   ├── WXREntry.php         # エントリーモデル ✅
+│   ├── WXRMedia.php         # メディアモデル ✅
+│   ├── WXRCategory.php      # カテゴリーモデル ✅
+│   └── WXRTag.php           # タグモデル ✅
 │
 ├── Import/
-│   ├── BatchProcessor.php   # バッチ処理エンジン
-│   ├── EntryImporter.php    # エントリー移行
-│   ├── MediaImporter.php    # メディア移行
-│   └── CategoryCreator.php  # カテゴリー自動作成
+│   ├── BatchProcessor.php   # バッチ処理エンジン ✅
+│   ├── EntryImporter.php    # エントリー移行 ✅
+│   ├── MediaImporter.php    # メディア移行 ✅
+│   └── CategoryCreator.php  # カテゴリー自動作成 ✅
 │
 ├── Content/
-│   └── UrlRewriter.php      # URL書き換え
+│   └── ContentProcessor.php # WordPressブロック変換・URL書き換え ✅
 │
 ├── Media/
-│   └── Downloader.php       # メディアダウンローダー
+│   └── Downloader.php       # メディアダウンローダー ✅
 │
 ├── Unit/
-│   └── ContentUnitCreator.php # コンテンツユニット生成
+│   └── ContentUnitCreator.php # コンテンツユニット生成 ✅
 │
 └── Helpers/
-    └── CodeGenerator.php     # コード生成ヘルパー
+    └── CodeGenerator.php     # コード生成ヘルパー ✅
 ```
 
 ### /template - テンプレートファイル

@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/uidev1116/acms-api-preview.git"
+    "url": "https://github.com/uidev1116/wp-import.git"
   },
   "devDependencies": {
     "archiver": "^5.3.0",

@@ -48,11 +48,47 @@ WXRファイルを解析してデータを抽出するクラス。
 #### Importer (インポーター)
 エントリーやメディアをa-blog cmsに移行するクラス。
 
-#### UrlRewriter (URLリライター)
-エントリー本文内のURLを書き換えるクラス。
+#### ContentProcessor (コンテンツプロセッサー)
+WordPressブロックをa-blog cmsブロック形式に変換し、URL書き換えを行うクラス。
 
-#### ProgressTracker (進捗トラッカー)
-移行処理の進捗を記録するクラス（JSON形式）。
+#### BatchProcessor (バッチプロセッサー)
+大量データを効率的に処理する統合処理エンジン。動的最適化機能を含む。
+
+#### ProgressLogger (進捗ログシステム)
+a-blog cms標準のLoggerサービスを利用したリアルタイム進捗管理。
+
+## WordPressブロック用語
+
+#### Gutenbergブロック
+WordPress 5.0以降のブロックエディターで使用される構造化コンテンツ。
+
+#### ブロックコメント
+WordPressブロックを定義するHTMLコメント（例：`<!-- wp:image -->`）。
+
+#### ブロック属性
+ブロックの設定情報（JSON形式）。配置、サイズ、スタイル等を含む。
+
+## a-blog cmsブロック用語
+
+#### imageBlock
+a-blog cmsの画像表示ブロック。data-type="imageBlock"で定義。
+
+#### fileBlock
+a-blog cmsのファイルダウンロードブロック。data-type="fileBlock"で定義。
+
+#### メディアID連携
+a-blog cmsメディアマネージャーとの連携機能。data-midによる関連付け。
+
+## 処理最適化用語
+
+#### 動的バッチサイズ
+メモリ使用量に応じて自動調整されるバッチ処理単位。
+
+#### URLキャッシュ
+メディアURL変換結果の高速化キャッシュシステム。
+
+#### エラー分離
+個別アイテムの処理失敗が全体を停止させない仕組み。
 
 ## 画面用語
 

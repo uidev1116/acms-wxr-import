@@ -171,7 +171,7 @@ src/Services/
 │   └── Downloader.php          # ファイルダウンローダー ✅
 │
 ├── Content/                    # コンテンツ処理関連（）
-│   └── UrlRewriter.php         # 本文内URL書き換え ✅
+│   └── ContentProcessor.php    # WordPressブロック変換・URL書き換え ✅
 │
 ├── Unit/                       # ユニット処理関連（）
 │   └── ContentUnitCreator.php  # コンテンツユニット生成 ✅
@@ -241,6 +241,28 @@ class ProgressJson extends ACMS_POST
 ### 統合処理エンジン（BatchProcessor）
 
 既存のBatchProcessorが統合処理を完全に担当：
+
+#### 動的最適化機能（実装済み）
+
+**1. 動的バッチサイズ調整**
+- メモリ使用量に基づく自動調整
+- 最小5件〜最大100件の範囲で動的変更
+- メモリ不足時の自動削減（50%削減）
+
+**2. メモリ最適化**
+- メモリ使用量監視（制限の80%を基準）
+- ガベージコレクション最適化
+- バッチ間の負荷軽減（0.1〜0.2秒の遅延）
+
+**3. エラー復旧機能**
+- 個別アイテムのエラーは処理を継続
+- 致命的エラーと警告レベルの分類
+- 詳細なエラーログとスタックトレース記録
+
+**4. パフォーマンス監視**
+- バッチごとの処理時間記録
+- メモリピーク使用量監視
+- 進捗レポートでのリアルタイム表示
 
 **BatchProcessor.php の実装抜粋**
 
@@ -415,6 +437,42 @@ POST/WpImport/ProgressJson.php   # 進捗データJSON取得API
 │                [新しい移行を開始] ボタン               │
 │                                                   │
 └─────────────────────────────────────────────────────┘
+```
+
+## WordPressブロック変換システム
+
+### ContentProcessor の詳細機能
+
+**実装済み機能**：
+
+#### 1. WordPressブロック解析機能
+- Gutenbergブロックコメント（`<!-- wp:image -->` など）の自動解析
+- ブロック属性（JSON形式）の抽出・デコード
+- ブロックタイプ別の処理分岐
+
+```php
+// 実装例：extractWordPressBlocks()メソッド
+$pattern = '/<!-- wp:(\w+)(?:\s+(\{[^}]*\}))?\s*-->(.*?)<!-- \/wp:\1\s*-->/s';
+```
+
+#### 2. a-blog cmsブロック変換機能
+- **画像ブロック**：WordPressの`wp:image`をa-blog cmsの`imageBlock`に変換
+- **ファイルブロック**：WordPressの`wp:file`をa-blog cmsの`fileBlock`に変換
+- メディアID連携によるURL書き換え
+
+#### 3. メディアURL置換システム
+- WordPressメディアURLパターンの検出
+- a-blog cms新メディアURLへの自動置換
+- URLキャッシュによる高速化
+
+#### 4. ブロック属性継承
+- 配置（align）、幅（width）設定の継承
+- キャプション、ALTテキストの保持
+- カスタムCSSクラスの引き継ぎ
+
+**処理フロー**：
+```
+WordPressブロック → 解析 → 属性抽出 → メディアマッピング → a-blog cmsブロック生成
 ```
 
 ## エラーハンドリング
