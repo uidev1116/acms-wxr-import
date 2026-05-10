@@ -486,7 +486,8 @@ class Downloader
     }
 
     /**
-     * HTTPダウンロード
+     * HTTPダウンロード（リダイレクトを自前で最大 5 ホップ追跡し、
+     * 各ホップでスキーム・到達 IP を検証することで SSRF を防止する）
      *
      * @param string $url
      * @return array{
@@ -505,41 +506,206 @@ class Downloader
             ];
         }
 
-        $curl = curl_init();
+        $currentUrl = $url;
+        $maxHops = 5;
 
-        curl_setopt_array($curl, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 5,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_USERAGENT => 'WXRImport Plugin/1.0 (a-blog cms)',
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            // レスポンスサイズ制限
-            CURLOPT_MAXFILESIZE => $this->maxFileSize,
-            // ヘッダーを含めない
-            CURLOPT_HEADER => false,
-        ]);
+        for ($hop = 0; $hop <= $maxHops; $hop++) {
+            $validation = $this->validateUrlForFetch($currentUrl);
+            if (!$validation['ok']) {
+                Logger::warning('【WXRImport plugin】SSRF対策によりURLを拒否', [
+                    'url' => $currentUrl,
+                    'reason' => $validation['reason'],
+                ]);
+                return [
+                    'success' => false,
+                    'error' => '到達不能または許可されないURLです: ' . $validation['reason'],
+                ];
+            }
 
-        $body = curl_exec($curl);
-        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $error = curl_error($curl);
+            $hopResult = $this->fetchSingleHop($currentUrl);
+            if (!$hopResult['success']) {
+                return $hopResult;
+            }
 
-        if ($body === false) {
+            // 3xx かつ Location があれば次ホップへ。それ以外はここで完了。
+            $location = $hopResult['location'] ?? '';
+            if ($hopResult['http_code'] >= 300 && $hopResult['http_code'] < 400 && $location !== '') {
+                if ($hop === $maxHops) {
+                    return [
+                        'success' => false,
+                        'error' => 'リダイレクト上限に達しました',
+                    ];
+                }
+                $nextUrl = $this->resolveRedirectUrl($currentUrl, $location);
+                if ($nextUrl === null) {
+                    return [
+                        'success' => false,
+                        'error' => 'リダイレクト先URLを解決できませんでした',
+                    ];
+                }
+                $currentUrl = $nextUrl;
+                continue;
+            }
+
             return [
-                'success' => false,
-                'error' => 'HTTPダウンロードエラー: ' . ($error ?: 'Unknown error')
+                'success' => true,
+                'body' => $hopResult['body'],
+                'http_code' => $hopResult['http_code'],
             ];
         }
 
-
         return [
-            'success' => true,
-            'body' => $body,
-            'http_code' => (int)$httpCode
+            'success' => false,
+            'error' => 'リダイレクト上限に達しました',
         ];
+    }
+
+    /**
+     * 1 ホップ分の cURL 取得
+     *
+     * @return array{success: bool, body?: string, http_code?: int, location?: string, error?: string}
+     */
+    private function fetchSingleHop(string $url): array
+    {
+        $curl = curl_init();
+        try {
+            curl_setopt_array($curl, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                // リダイレクトは自前で 1 ホップずつ URL 検証するため無効化
+                CURLOPT_FOLLOWLOCATION => false,
+                // 危険なスキーム（file://, gopher://, dict:// 等）の利用を遮断
+                CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_USERAGENT => 'WXRImport Plugin/1.0 (a-blog cms)',
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_MAXFILESIZE => $this->maxFileSize,
+                // Location を取り出すためヘッダ込みで取得
+                CURLOPT_HEADER => true,
+            ]);
+
+            $raw = curl_exec($curl);
+            if ($raw === false) {
+                return [
+                    'success' => false,
+                    'error' => 'HTTPダウンロードエラー: ' . (curl_error($curl) ?: 'Unknown error'),
+                ];
+            }
+
+            $headerSize = (int)curl_getinfo($curl, CURLINFO_HEADER_SIZE);
+            $httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $rawString = (string)$raw;
+            $rawHeader = substr($rawString, 0, $headerSize);
+            $body = (string)substr($rawString, $headerSize);
+
+            return [
+                'success' => true,
+                'body' => $body,
+                'http_code' => $httpCode,
+                'location' => $this->extractLocationHeader($rawHeader),
+            ];
+        } finally {
+            curl_close($curl);
+        }
+    }
+
+    /**
+     * cURL の生ヘッダー文字列から最終ホップの Location ヘッダーを抽出する
+     */
+    private function extractLocationHeader(string $rawHeader): string
+    {
+        $location = '';
+        foreach (preg_split('/\r?\n/', $rawHeader) ?: [] as $line) {
+            if (preg_match('/^Location:\s*(.+)$/i', trim($line), $m) === 1) {
+                $location = trim($m[1]);
+            }
+        }
+        return $location;
+    }
+
+    /**
+     * 相対 Location を絶対 URL に解決する
+     */
+    private function resolveRedirectUrl(string $base, string $location): ?string
+    {
+        if ($location === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $location)) {
+            return $location;
+        }
+        $baseParts = parse_url($base);
+        if ($baseParts === false || empty($baseParts['scheme']) || empty($baseParts['host'])) {
+            return null;
+        }
+        $scheme = $baseParts['scheme'];
+        $host = $baseParts['host'];
+        $port = isset($baseParts['port']) ? (':' . $baseParts['port']) : '';
+        if (str_starts_with($location, '//')) {
+            return $scheme . ':' . $location;
+        }
+        if (str_starts_with($location, '/')) {
+            return $scheme . '://' . $host . $port . $location;
+        }
+        // 相対パス: base のパス末尾ディレクトリに連結
+        $basePath = $baseParts['path'] ?? '/';
+        $baseDir = preg_replace('#/[^/]*$#', '/', $basePath) ?? '/';
+        return $scheme . '://' . $host . $port . $baseDir . $location;
+    }
+
+    /**
+     * URL がフェッチして安全か検証する。
+     * - スキームが http / https である
+     * - ホスト名の DNS 解決結果のすべての IP が public IP である
+     *
+     * @return array{ok: bool, reason: string}
+     */
+    private function validateUrlForFetch(string $url): array
+    {
+        $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return ['ok' => false, 'reason' => '対応していないスキーム: ' . $scheme];
+        }
+
+        $host = (string)parse_url($url, PHP_URL_HOST);
+        if ($host === '') {
+            return ['ok' => false, 'reason' => 'ホスト名が空です'];
+        }
+
+        // IP リテラルがそのまま入っているケースもカバーする
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            if (!$this->isPublicIp($host)) {
+                return ['ok' => false, 'reason' => 'プライベート/予約済みIPは禁止です: ' . $host];
+            }
+            return ['ok' => true, 'reason' => ''];
+        }
+
+        $ips = gethostbynamel($host);
+        if ($ips === false || $ips === []) {
+            return ['ok' => false, 'reason' => 'ホスト名解決に失敗しました: ' . $host];
+        }
+        foreach ($ips as $ip) {
+            if (!$this->isPublicIp($ip)) {
+                return ['ok' => false, 'reason' => 'プライベート/予約済みIPに解決されました: ' . $ip];
+            }
+        }
+        return ['ok' => true, 'reason' => ''];
+    }
+
+    /**
+     * 与えられた IP がパブリックレンジか判定する。
+     * プライベート（10.0.0.0/8 等）・予約済み（169.254.0.0/16 等）はすべて拒否。
+     */
+    private function isPublicIp(string $ip): bool
+    {
+        return filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+        ) !== false;
     }
 
     /**
