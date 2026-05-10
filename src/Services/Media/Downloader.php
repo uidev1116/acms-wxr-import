@@ -567,49 +567,48 @@ class Downloader
      */
     private function fetchSingleHop(string $url): array
     {
+        // PHP 8.0+ では curl_init() は CurlHandle を返し、デストラクタで自動解放される。
+        // よって curl_close() は不要。
         $curl = curl_init();
-        try {
-            curl_setopt_array($curl, [
-                CURLOPT_URL => $url,
-                CURLOPT_RETURNTRANSFER => true,
-                // リダイレクトは自前で 1 ホップずつ URL 検証するため無効化
-                CURLOPT_FOLLOWLOCATION => false,
-                // 危険なスキーム（file://, gopher://, dict:// 等）の利用を遮断
-                CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-                CURLOPT_TIMEOUT => 30,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_USERAGENT => 'WXRImport Plugin/1.0 (a-blog cms)',
-                CURLOPT_SSL_VERIFYPEER => true,
-                CURLOPT_SSL_VERIFYHOST => 2,
-                CURLOPT_MAXFILESIZE => $this->maxFileSize,
-                // Location を取り出すためヘッダ込みで取得
-                CURLOPT_HEADER => true,
-            ]);
 
-            $raw = curl_exec($curl);
-            if ($raw === false) {
-                return [
-                    'success' => false,
-                    'error' => 'HTTPダウンロードエラー: ' . (curl_error($curl) ?: 'Unknown error'),
-                ];
-            }
+        curl_setopt_array($curl, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            // リダイレクトは自前で 1 ホップずつ URL 検証するため無効化
+            CURLOPT_FOLLOWLOCATION => false,
+            // 危険なスキーム（file://, gopher://, dict:// 等）の利用を遮断
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_USERAGENT => 'WXRImport Plugin/1.0 (a-blog cms)',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_MAXFILESIZE => $this->maxFileSize,
+            // Location を取り出すためヘッダ込みで取得
+            CURLOPT_HEADER => true,
+        ]);
 
-            $headerSize = (int)curl_getinfo($curl, CURLINFO_HEADER_SIZE);
-            $httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            $rawString = (string)$raw;
-            $rawHeader = substr($rawString, 0, $headerSize);
-            $body = (string)substr($rawString, $headerSize);
-
+        $raw = curl_exec($curl);
+        if ($raw === false) {
             return [
-                'success' => true,
-                'body' => $body,
-                'http_code' => $httpCode,
-                'location' => $this->extractLocationHeader($rawHeader),
+                'success' => false,
+                'error' => 'HTTPダウンロードエラー: ' . (curl_error($curl) ?: 'Unknown error'),
             ];
-        } finally {
-            curl_close($curl);
         }
+
+        $headerSize = (int)curl_getinfo($curl, CURLINFO_HEADER_SIZE);
+        $httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $rawString = (string)$raw;
+        $rawHeader = substr($rawString, 0, $headerSize);
+        $body = (string)substr($rawString, $headerSize);
+
+        return [
+            'success' => true,
+            'body' => $body,
+            'http_code' => $httpCode,
+            'location' => $this->extractLocationHeader($rawHeader),
+        ];
     }
 
     /**
