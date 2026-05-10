@@ -18,6 +18,9 @@ class Downloader
     /** @var string ダウンロードディレクトリのベースパス */
     private string $downloadDir;
 
+    /** @var string ローカル取り込みの許可ベースディレクトリ（この配下のみ受理） */
+    private string $localPathBase;
+
 
     /** @var int 最大ファイルサイズ（バイト） */
     private int $maxFileSize = 50 * 1024 * 1024; // 50MB
@@ -46,7 +49,16 @@ class Downloader
     public function __construct()
     {
         $this->downloadDir = ARCHIVES_DIR . 'wxr-import/media/';
+
+        // ローカル取り込みの許可ベース。デフォルトは取り込み専用ディレクトリ。
+        // config('wxr_import_local_path_base') で運用上書き可能。
+        $configured = config('wxr_import_local_path_base');
+        $this->localPathBase = is_string($configured) && $configured !== ''
+            ? $configured
+            : ARCHIVES_DIR . 'wxr-import/source/';
+
         $this->ensureDownloadDirectory();
+        $this->ensureLocalPathBase();
     }
 
     /**
@@ -126,13 +138,18 @@ class Downloader
     }
 
     /**
-     * wp:attachment_url がローカルパス（または file://）かどうかを判定し、実在する絶対パスを返す
+     * wp:attachment_url がローカルパス（または file://）かどうかを判定し、
+     * 許可ベースディレクトリ配下の実在ファイルである場合に限り絶対パスを返す。
      *
      * XML 内の wp:attachment_url をローカルファイルパスに置換した場合に使用。
      * 例: /Users/foo/Downloads/image.jpg や file:///path/to/file.jpg
      *
+     * ベース配下チェックはコアの LocalStorage::validateDirectoryTraversalPath() に委譲する。
+     * これにより realpath 正規化・接頭辞照合に加え、secret_file_name（config.server.php /
+     * .env / .htaccess など）の blocklist も適用される。
+     *
      * @param string $urlOrPath 元のURL、またはローカルパス／file:// URL
-     * @return string|null 実在する絶対パス。ローカルファイルでない、または存在しない場合は null
+     * @return string|null 許可ベース配下にある実在ファイルの絶対パス。それ以外は null
      */
     private function resolveLocalFilePath(string $urlOrPath): ?string
     {
@@ -150,21 +167,26 @@ class Downloader
         }
         $path = str_replace('\\', '/', $path);
 
-        // 絶対パスまたは file:// の場合はそのまま存在チェック
-        if (@is_file($path)) {
-            $resolved = @realpath($path);
-            return $resolved !== false ? $resolved : null;
+        // 直接パス、または DOCUMENT_ROOT 相対の 2 系統を、いずれも
+        // コアの validateDirectoryTraversalPath() で許可ベース配下かチェックする。
+        $candidates = [$path];
+        if (str_starts_with($path, '/') && defined('DOCUMENT_ROOT')) {
+            $candidates[] = rtrim(DOCUMENT_ROOT, '/') . $path;
         }
 
-        // ドキュメントルート相対（例: /wp-content/uploads/2026/01/sample.png）の場合は DOCUMENT_ROOT と結合して解決
-        if (str_starts_with($path, '/') && defined('DOCUMENT_ROOT')) {
-            $docRootPath = rtrim(DOCUMENT_ROOT, '/') . $path;
-            if (@is_file($docRootPath)) {
-                $resolved = @realpath($docRootPath);
-                return $resolved !== false ? $resolved : null;
+        foreach ($candidates as $candidate) {
+            if (LocalStorage::validateDirectoryTraversalPath($candidate, $this->localPathBase, true)) {
+                $resolved = LocalStorage::safeRealpath($candidate);
+                if ($resolved !== false && $resolved !== '') {
+                    return $resolved;
+                }
             }
         }
 
+        Logger::warning('【WXRImport plugin】許可外のローカルパスを拒否', [
+            'requested' => $urlOrPath,
+            'base' => $this->localPathBase,
+        ]);
         return null;
     }
 
@@ -194,7 +216,16 @@ class Downloader
                 }
             }
 
-            $content = @file_get_contents($sourcePath);
+            // 検証＋読み込みをコアに委譲（multi-layer defense として
+            // resolveLocalFilePath() に続く 2 段目の traversal チェックも兼ねる）
+            try {
+                $content = LocalStorage::get($sourcePath, $this->localPathBase);
+            } catch (\Throwable $th) {
+                return [
+                    'success' => false,
+                    'error' => 'ローカルファイルの読み込みに失敗しました: ' . $th->getMessage(),
+                ];
+            }
             if ($content === false) {
                 return [
                     'success' => false,
@@ -388,6 +419,20 @@ class Downloader
             if (!LocalStorage::makeDirectory($this->downloadDir)) {
                 throw new \RuntimeException('ダウンロードディレクトリの作成に失敗しました: ' . $this->downloadDir);
             }
+        }
+    }
+
+    /**
+     * ローカル取り込みの許可ベースディレクトリを確保
+     *
+     * 取り込み元として参照されるディレクトリ自体は事前に存在する必要があるため、
+     * ない場合は空ディレクトリを生成しておく（ユーザーがファイルを配置する場所）。
+     */
+    private function ensureLocalPathBase(): void
+    {
+        if (!LocalStorage::exists($this->localPathBase)) {
+            // ベースディレクトリが用意できなくても致命ではない（ローカル取り込みを使わない運用がある）
+            LocalStorage::makeDirectory($this->localPathBase);
         }
     }
 
