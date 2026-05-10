@@ -73,7 +73,7 @@ class MediaExtractor
         if (isset($postMeta['_wp_attachment_metadata'])) {
             $metadataValue = $postMeta['_wp_attachment_metadata'];
             if (is_string($metadataValue)) {
-                $metadata = unserialize($metadataValue);
+                $metadata = unserialize($metadataValue, ['allowed_classes' => false]);
                 if (is_array($metadata)) {
                     $media->width = (int)($metadata['width'] ?? 0);
                     $media->height = (int)($metadata['height'] ?? 0);
