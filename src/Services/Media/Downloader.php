@@ -7,6 +7,7 @@ namespace Acms\Plugins\WxrImport\Services\Media;
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\LocalStorage;
 use Acms\Services\Facades\Common;
+use Acms\Services\Common\MimeTypeValidator;
 use Acms\Plugins\WxrImport\Services\WXR\WXRMedia;
 
 /**
@@ -24,21 +25,6 @@ class Downloader
 
     /** @var int 最大ファイルサイズ（バイト） */
     private int $maxFileSize = 50 * 1024 * 1024; // 50MB
-
-    /** @var array<string> 許可するMIMEタイプ */
-    private array $allowedMimeTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/svg+xml',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/zip',
-    ];
 
     /** @var int ダウンロード間隔（マイクロ秒） */
     private int $downloadDelay = 500000; // 0.5秒
@@ -82,13 +68,8 @@ class Downloader
             ];
         }
 
-        // MIMEタイプチェック
-        if (!$this->isMimeTypeAllowed($media->mimeType)) {
-            return [
-                'success' => false,
-                'error' => '許可されていないファイルタイプです: ' . $media->mimeType
-            ];
-        }
+        // 実MIMEはダウンロード／コピー後にコアのMimeTypeValidatorで検証する。
+        // WXR内のmime-type宣言値は攻撃者が制御できるため信頼しない。
 
         try {
             // ダウンロード先パスを生成
@@ -248,6 +229,10 @@ class Downloader
                 ];
             }
 
+            $mimeCheck = $this->validateStoredFile($localPath);
+            if (!$mimeCheck['success']) {
+                return $mimeCheck;
+            }
 
             return [
                 'success' => true,
@@ -338,6 +323,11 @@ class Downloader
                 ];
             }
 
+            $mimeCheck = $this->validateStoredFile($localPath);
+            if (!$mimeCheck['success']) {
+                return $mimeCheck;
+            }
+
             return [
                 'success' => true,
                 'local_path' => $localPath,
@@ -400,14 +390,50 @@ class Downloader
     }
 
     /**
-     * MIMEタイプが許可されているかチェック
+     * 取り込んだファイルの実MIMEを検証する許可拡張子リストを構築する。
      *
-     * @param string $mimeType
-     * @return bool
+     * Media::storeFile() 内の allowlist と同じ構成にすることで、Downloader 通過後の
+     * 保存段階で再度はじかれてエラーループになる事象を防ぐ。
+     *
+     * @return array<int, string>
      */
-    private function isMimeTypeAllowed(string $mimeType): bool
+    private function buildAllowedExtensions(): array
     {
-        return in_array($mimeType, $this->allowedMimeTypes, true);
+        return array_values(array_unique(array_merge(
+            ['svg'],
+            configArray('file_extension_image'),
+            configArray('file_extension_document'),
+            configArray('file_extension_archive'),
+            configArray('file_extension_movie'),
+            configArray('file_extension_audio')
+        )));
+    }
+
+    /**
+     * ローカルに保存済みのファイルの実MIMEをコアバリデータで検証する。
+     * 違反時はファイルを削除してエラー戻り値を返す。
+     *
+     * @return array{success: bool, error?: string}
+     */
+    private function validateStoredFile(string $localPath): array
+    {
+        $validator = new MimeTypeValidator();
+        $allowed = $this->buildAllowedExtensions();
+        if (!$validator->validateAllowedByContent($localPath, $allowed)) {
+            $sniffed = $validator->sniffMimeType($localPath);
+            Logger::warning('【WXRImport plugin】許可されないMIMEを検出し、ファイルを破棄', [
+                'path' => $localPath,
+                'sniffed_mime' => $sniffed,
+            ]);
+            if (LocalStorage::exists($localPath)) {
+                LocalStorage::remove($localPath);
+            }
+            return [
+                'success' => false,
+                'error' => '許可されていないファイル形式です: ' . ($sniffed ?? 'unknown'),
+            ];
+        }
+        return ['success' => true];
     }
 
     /**
@@ -710,9 +736,11 @@ class Downloader
     /**
      * 設定を変更
      *
+     * 許可MIMEタイプは a-blog cms コアの configArray('file_extension_*') 由来で
+     * 自動的に構築されるため、本メソッドからの差し替えは受け付けない。
+     *
      * @param array{
      *     max_file_size?: int,
-     *     allowed_mime_types?: array<string>,
      *     download_delay?: int
      * } $config
      */
@@ -720,10 +748,6 @@ class Downloader
     {
         if (isset($config['max_file_size'])) {
             $this->maxFileSize = max(1024, (int)$config['max_file_size']);
-        }
-
-        if (isset($config['allowed_mime_types'])) {
-            $this->allowedMimeTypes = $config['allowed_mime_types'];
         }
 
         if (isset($config['download_delay'])) {
