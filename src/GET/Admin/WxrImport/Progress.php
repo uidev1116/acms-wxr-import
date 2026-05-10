@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\GET\Admin\WpImport;
+namespace Acms\Plugins\WxrImport\GET\Admin\WxrImport;
 
 use Acms\Services\Facades\Application;
 use Template;
@@ -24,7 +24,7 @@ class Progress extends ACMS_GET
         /**
          * WordPress移行中チェック
          */
-        $lockService = Application::make('wp-import.progress-lock');
+        $lockService = Application::make('wxr-import.progress-lock');
         if ($lockService->isLocked()) {
             $rootVars['processing'] = 1;
         } else {

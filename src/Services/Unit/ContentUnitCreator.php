@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Unit;
+namespace Acms\Plugins\WxrImport\Services\Unit;
 
 use Acms\Services\Unit\Repository;
 use Acms\Services\Unit\Models\BlockEditor;
 use Acms\Services\Unit\UnitCollection;
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
-use Acms\Plugins\WPImport\Services\WXR\WXREntry;
+use Acms\Plugins\WxrImport\Services\WXR\WXREntry;
 
 class ContentUnitCreator
 {

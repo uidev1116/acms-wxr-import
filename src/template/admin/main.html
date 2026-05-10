@@ -34,10 +34,10 @@
 <!-- BEGIN_MODULE Admin_Import_Message -->
 
 
-<!-- BEGIN_MODULE Admin_WPImport_Progress -->
+<!-- BEGIN_MODULE Admin_WxrImport_Progress -->
 <!-- BEGIN_IF [{processing}/eq/1]-->
 <h2 class="acms-admin-admin-title2"><!--T-->WordPressインポート状況<!--/T--></h2>
-<div id="js-background-wp-import">
+<div id="js-background-wxr-import">
   <div class="js-progress acms-admin-progress acms-admin-progress-striped acms-admin-active"
        style="display: none;">
     <div class="acms-admin-progress-bar">
@@ -88,7 +88,7 @@
 
     try {
       const formData = new FormData();
-      formData.append('ACMS_POST_WpImport_ProgressJson', 'exec');
+      formData.append('ACMS_POST_WxrImport_ProgressJson', 'exec');
       formData.append('formToken', window.csrfToken);
 
       const response = await fetch(window.location.href, {
@@ -159,7 +159,7 @@
 
   // ページ読み込み時にプログレス確認を開始
   document.addEventListener('DOMContentLoaded', () => {
-    initProgressCheck('#js-background-wp-import', 2000);
+    initProgressCheck('#js-background-wxr-import', 2000);
   });
 })();
 </script>
@@ -259,7 +259,7 @@
         <button
           class="acms-admin-btn-admin acms-admin-btn-admin-primary acms-admin-btn-admin-save"
           type="submit"
-          name="ACMS_POST_WPImport_Execute"
+          name="ACMS_POST_WxrImport_Execute"
           onclick="return confirm('<!--T-->インポートを実行します。よろしいですか？<!--/T-->');"
         >
           <!--T-->インポートを実行する<!--/T-->
@@ -269,5 +269,5 @@
   </table>
 </form>
 <!-- END_IF -->
-<!-- END_MODULE Admin_WPImport_Progress -->
+<!-- END_MODULE Admin_WxrImport_Progress -->
 <!-- END_MODULE Touch_SessionWithAdministration -->

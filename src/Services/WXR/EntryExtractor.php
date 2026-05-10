@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\WXR;
+namespace Acms\Plugins\WxrImport\Services\WXR;
 
 use DateTime;
 use DateTimeZone;
@@ -125,7 +125,7 @@ class EntryExtractor
             return $entry;
 
         } catch (Exception $e) {
-            Logger::error('【WPImport plugin】エントリー抽出エラー', [
+            Logger::error('【WXRImport plugin】エントリー抽出エラー', [
                 'post_id' => $wxrItem['post_id'] ?? 'unknown',
                 'error' => $e->getMessage()
             ]);

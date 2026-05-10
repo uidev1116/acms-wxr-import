@@ -7,7 +7,7 @@ a-blog cms用WordPress移行プラグインの基本的なディレクトリ構�
 ## ディレクトリ構造
 
 ```
-plugins/WPImport/
+plugins/WXRImport/
 ├── README.md
 ├── composer.json
 ├── phpcs.xml
@@ -42,13 +42,13 @@ plugins/WPImport/
 
 #### GET/ - 画面表示モジュール
 ```
-GET/Admin/WpImport/
+GET/Admin/WxrImport/
 └── Progress.php     # 進捗表示画面
 ```
 
 #### POST/ - 処理実行モジュール
 ```
-POST/WpImport/
+POST/WxrImport/
 ├── Execute.php      # 移行実行処理
 └── ProgressJson.php # 進捗データJSON取得
 ```
@@ -127,7 +127,7 @@ tests/
 a-blog cmsプラグインディレクトリ構造：
 
 ```
-ablogcms/extension/plugins/WPImport/
+ablogcms/extension/plugins/WXRImport/
 ├── GET/                   # → src/GET/ へのシンボリックリンク
 ├── POST/                  # → src/POST/ へのシンボリックリンク
 ├── template/              # → template/ へのシンボリックリンク

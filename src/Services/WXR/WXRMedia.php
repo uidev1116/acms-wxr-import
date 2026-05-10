@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\WXR;
+namespace Acms\Plugins\WxrImport\Services\WXR;
 
 /**
  * WordPressメディア情報を格納するデータクラス

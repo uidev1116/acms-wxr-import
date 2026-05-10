@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Import;
+namespace Acms\Plugins\WxrImport\Services\Import;
 
 use SQL;
 use Acms\Services\Facades\Database;
@@ -12,7 +12,7 @@ use Acms\Services\Facades\Media;
 use Acms\Services\Facades\Common;
 use Acms\Services\Facades\PublicStorage;
 use Acms\Services\Facades\PrivateStorage;
-use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
+use Acms\Plugins\WxrImport\Services\WXR\WXRMedia;
 
 /**
  * メディアファイルのa-blog cmsへの移行処理
@@ -71,7 +71,7 @@ class MediaImporter
             ];
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】メディアインポートエラー', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】メディアインポートエラー', Common::exceptionArray($th, [
                 'wp_post_id' => $media->wpPostId,
                 'local_path' => $localPath
             ]));
@@ -120,7 +120,7 @@ class MediaImporter
     private function prepareFileInfo(string $localPath, WXRMedia $media): ?array
     {
         if (!LocalStorage::exists($localPath)) {
-            Logger::error('【WPImport plugin】ローカルファイルが存在しません', [
+            Logger::error('【WXRImport plugin】ローカルファイルが存在しません', [
                 'path' => $localPath
             ]);
             return null;
@@ -130,7 +130,7 @@ class MediaImporter
         $mimeType = LocalStorage::getMimeType($localPath);
 
         if (!$mimeType) {
-            Logger::error('【WPImport plugin】MIMEタイプの取得に失敗', [
+            Logger::error('【WXRImport plugin】MIMEタイプの取得に失敗', [
                 'path' => $localPath
             ]);
             return null;
@@ -170,7 +170,7 @@ class MediaImporter
                 'extension' => strtolower($data['type']),
             ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】画像の保存に失敗', [
+            Logger::error('【WXRImport plugin】画像の保存に失敗', [
                 'error' => $e->getMessage(),
                 'file' => $fileInfo['name'],
             ]);
@@ -203,7 +203,7 @@ class MediaImporter
                 'extension' => 'svg',
             ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】SVGの保存に失敗', [
+            Logger::error('【WXRImport plugin】SVGの保存に失敗', [
                 'error' => $e->getMessage(),
                 'file' => $fileInfo['name'],
             ]);
@@ -236,7 +236,7 @@ class MediaImporter
                 'extension' => strtolower($data['type']),
             ];
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】ファイルの保存に失敗', [
+            Logger::error('【WXRImport plugin】ファイルの保存に失敗', [
                 'error' => $e->getMessage(),
                 'file' => $fileInfo['name'],
             ]);
@@ -275,7 +275,7 @@ class MediaImporter
 
         } catch (\Throwable $th) {
             Database::connection()->rollBack();
-            Logger::error('【WPImport plugin】メディアデータベース登録エラー', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】メディアデータベース登録エラー', Common::exceptionArray($th, [
                 'wp_post_id' => $media->wpPostId
             ]));
             return null;

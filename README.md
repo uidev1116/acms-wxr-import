@@ -1,4 +1,4 @@
-# WPImport
+# WXRImport
 
 WordPressのデータをa-blog cmsに包括的に移行するための拡張アプリです。
 
@@ -30,13 +30,13 @@ WordPress標準のエクスポート機能（WXR形式）を利用して、エ�
 
 ## ダウンロード
 
-[WPImport](https://github.com/uidev1116/acms-wp-import/releases/latest)
+[WXRImport](https://github.com/uidev1116/acms-wxr-import/releases/latest)
 
 ## インストール方法
 
 拡張アプリをダウンロード後、zipファイルを解凍して `extension/plugins/` に設置します。
 
-設置が完了すると、「管理画面 > 拡張アプリ」に `WPImport` という名前で本拡張アプリが表示されるので、インストールをクリックしインストールします。
+設置が完了すると、「管理画面 > 拡張アプリ」に `WXRImport` という名前で本拡張アプリが表示されるので、インストールをクリックしインストールします。
 
 ## 使用方法
 

@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Import;
+namespace Acms\Plugins\WxrImport\Services\Import;
 
 use ACMS_RAM;
 use Acms\Services\Facades\Common;
 use Acms\Services\Facades\Database;
 use Acms\Services\Facades\Logger;
-use Acms\Plugins\WPImport\Services\WXR\WXRCategory;
-use Acms\Plugins\WPImport\Services\Helpers\CodeGenerator;
+use Acms\Plugins\WxrImport\Services\WXR\WXRCategory;
+use Acms\Plugins\WxrImport\Services\Helpers\CodeGenerator;
 use SQL;
 
 /**
@@ -20,7 +20,7 @@ class CategoryCreator
     /**
      * WordPressカテゴリーからa-blog cmsカテゴリーを作成
      *
-     * @param array<Acms\Plugins\WPImport\Services\WXR\WXRCategory> $categories
+     * @param array<Acms\Plugins\WxrImport\Services\WXR\WXRCategory> $categories
      * @param array{
      *     batch_size: int,
      *     include_media: bool,
@@ -54,7 +54,7 @@ class CategoryCreator
                 }
 
             } catch (\Throwable $th) {
-                Logger::error('【WPImport plugin】カテゴリー作成に失敗しました', Common::exceptionArray($th, [
+                Logger::error('【WXRImport plugin】カテゴリー作成に失敗しました', Common::exceptionArray($th, [
                     'wp_term_id' => $category->termId,
                     'name' => $category->name
                 ]));
@@ -174,7 +174,7 @@ class CategoryCreator
             return intval($categoryId);
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】カテゴリーの作成に失敗しました（一段階登録）', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】カテゴリーの作成に失敗しました（一段階登録）', Common::exceptionArray($th, [
                 'wp_term_id' => $wxrCategory->termId,
                 'name' => $wxrCategory->getDisplayName(),
                 'parent_id' => $parentId,
@@ -345,13 +345,13 @@ class CategoryCreator
     private function saveCategoryMetadata(int $categoryId, WXRCategory $wxrCategory): void
     {
         $metadata = [
-            'wp_import_term_id' => $wxrCategory->termId,
-            'wp_import_slug' => $wxrCategory->slug,
-            'wp_import_taxonomy' => $wxrCategory->taxonomy,
+            'wxr_import_term_id' => $wxrCategory->termId,
+            'wxr_import_slug' => $wxrCategory->slug,
+            'wxr_import_taxonomy' => $wxrCategory->taxonomy,
         ];
 
         if ($wxrCategory->description !== '') {
-            $metadata['wp_import_description'] = $wxrCategory->description;
+            $metadata['wxr_import_description'] = $wxrCategory->description;
         }
 
         $field = new \Field($metadata);

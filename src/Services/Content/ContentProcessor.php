@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Content;
+namespace Acms\Plugins\WxrImport\Services\Content;
 
 use SQL;
 use Acms\Services\Facades\Database;
@@ -45,7 +45,7 @@ class ContentProcessor
             $mediaReplaced = $result['replaced_count'];
             $replacedUrls = array_merge($replacedUrls, $result['replaced_urls']);
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】WordPressブロック変換エラー', Common::exceptionArray($e));
+            Logger::error('【WXRImport plugin】WordPressブロック変換エラー', Common::exceptionArray($e));
         }
 
 
@@ -191,7 +191,7 @@ class ContentProcessor
                 ];
             }
         } catch (\Throwable $e) {
-            Logger::error('【WPImport plugin】メディア情報取得エラー', Common::exceptionArray($e, [
+            Logger::error('【WXRImport plugin】メディア情報取得エラー', Common::exceptionArray($e, [
                 'media_id' => $mediaId
             ]));
         }
@@ -291,7 +291,7 @@ class ContentProcessor
                 try {
                     $attributes = json_decode($attributesJson, true) ?? [];
                 } catch (\Throwable $e) {
-                    Logger::warning('【WPImport plugin】ブロック属性JSONデコードエラー', [
+                    Logger::warning('【WXRImport plugin】ブロック属性JSONデコードエラー', [
                         'block_type' => $blockType,
                         'json' => $attributesJson,
                         'error' => $e->getMessage()

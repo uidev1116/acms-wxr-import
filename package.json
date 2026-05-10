@@ -1,5 +1,5 @@
 {
-  "name": "acms-wp-import",
+  "name": "acms-wxr-import",
   "version": "0.0.0",
   "description": "WordPress のデータを a-blog cms にインポートするための拡張アプリです。",
   "main": "index.js",
@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/uidev1116/wp-import.git"
+    "url": "https://github.com/uidev1116/wxr-import.git"
   },
   "devDependencies": {
     "archiver": "^5.3.0",

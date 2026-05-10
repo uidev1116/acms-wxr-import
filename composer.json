@@ -1,5 +1,5 @@
 {
-  "name": "uidev1116/acms-wp-import",
+  "name": "uidev1116/acms-wxr-import",
   "description": "WordPress のデータを a-blog cms にインポートするための拡張アプリです。",
   "scripts": {
     "lint": [

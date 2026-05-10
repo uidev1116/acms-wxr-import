@@ -24,7 +24,7 @@ public function validateWxrFile() {}
 
 // 変数: キャメルケース
 $entryData = [];
-$sessionId = 'wp_import_123';
+$sessionId = 'wxr_import_123';
 
 // 定数: SCREAMING_SNAKE_CASE
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -79,8 +79,8 @@ async function uploadFile(file) {
 ```
 src/
 ├── ServiceProvider.php          # プラグインエントリーポイント
-├── GET/WpImport/               # 画面表示モジュール
-├── POST/WpImport/              # 処理実行モジュール
+├── GET/WxrImport/               # 画面表示モジュール
+├── POST/WxrImport/              # 処理実行モジュール
 ├── Services/                   # ビジネスロジック
 └── template/admin/             # 管理画面テンプレート
 ```
@@ -101,19 +101,19 @@ use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
 
 // エラーログ（致命的エラー）- 必須
-Logger::error('【WPImport plugin】エントリー処理エラー', Common::exceptionArray($e, [
+Logger::error('【WXRImport plugin】エントリー処理エラー', Common::exceptionArray($e, [
     'wp_post_id' => $entry->wpPostId,
     'title' => $entry->title,
 ]));
 
 // 警告ログ（処理継続可能）- 重要な問題
-Logger::warning('【WPImport plugin】メディアダウンロード失敗', [
+Logger::warning('【WXRImport plugin】メディアダウンロード失敗', [
     'url' => $media->url,
     'error' => $downloadResult['error']
 ]);
 
 // 情報ログ（重要な処理完了）- 運用監視用
-Logger::info('【WPImport plugin】バッチ処理完了', [
+Logger::info('【WXRImport plugin】バッチ処理完了', [
     'processed_count' => $processedCount,
     'success_count' => $successCount,
     'error_count' => $errorCount
@@ -121,7 +121,7 @@ Logger::info('【WPImport plugin】バッチ処理完了', [
 ```
 
 **ログ出力ルール**：
-- プレフィックス `【WPImport plugin】` を必ず付与
+- プレフィックス `【WXRImport plugin】` を必ず付与
 - エラー時は `Common::exceptionArray()` でスタックトレース含む
 - 処理継続可能なエラーは `warning` レベル
 - デバッグログは本番では出力しない（削除済み）

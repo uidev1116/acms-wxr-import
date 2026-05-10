@@ -1,21 +1,21 @@
 <?php
 
-namespace Acms\Plugins\WPImport\POST\WpImport;
+namespace Acms\Plugins\WxrImport\POST\WxrImport;
 
 use ACMS_POST;
 use Acms\Services\Facades\Application;
 use Acms\Services\Facades\Common;
 use Acms\Services\Facades\Logger;
-use Acms\Plugins\WPImport\Services\WXR\Parser;
-use Acms\Plugins\WPImport\Services\WXR\EntryExtractor;
-use Acms\Plugins\WPImport\Services\WXR\WXRCategory;
-use Acms\Plugins\WPImport\Services\Import\BatchProcessor;
+use Acms\Plugins\WxrImport\Services\WXR\Parser;
+use Acms\Plugins\WxrImport\Services\WXR\EntryExtractor;
+use Acms\Plugins\WxrImport\Services\WXR\WXRCategory;
+use Acms\Plugins\WxrImport\Services\Import\BatchProcessor;
 
 class Execute extends ACMS_POST
 {
     private Parser $parser;
     private EntryExtractor $entryExtractor;
-    private \Acms\Plugins\WPImport\Services\WXR\MediaExtractor $mediaExtractor;
+    private \Acms\Plugins\WxrImport\Services\WXR\MediaExtractor $mediaExtractor;
     private BatchProcessor $batchProcessor;
 
     public function __construct()
@@ -25,7 +25,7 @@ class Execute extends ACMS_POST
         assert($container instanceof \Acms\Services\Container);
         $this->parser = $container->make(Parser::class);
         $this->entryExtractor = $container->make(EntryExtractor::class);
-        $this->mediaExtractor = $container->make(\Acms\Plugins\WPImport\Services\WXR\MediaExtractor::class);
+        $this->mediaExtractor = $container->make(\Acms\Plugins\WxrImport\Services\WXR\MediaExtractor::class);
         $this->batchProcessor = $container->make(BatchProcessor::class);
     }
 
@@ -42,7 +42,7 @@ class Execute extends ACMS_POST
             $file->validateFormat(['xml']);
             $filePath = $file->getPath();
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】ファイル検証エラー', Common::exceptionArray($th));
+            Logger::error('【WXRImport plugin】ファイル検証エラー', Common::exceptionArray($th));
             $this->addError('ファイル検証エラー: ' . $th->getMessage());
             return $this->Post;
         }
@@ -51,7 +51,7 @@ class Execute extends ACMS_POST
 
         $logger = Application::make('common.logger');
         assert($logger instanceof \Acms\Services\Common\Logger);
-        $lockService = Application::make('wp-import.progress-lock');
+        $lockService = Application::make('wxr-import.progress-lock');
         assert($lockService instanceof \Acms\Services\Common\Lock);
 
         if ($lockService->isLocked()) {
@@ -80,7 +80,7 @@ class Execute extends ACMS_POST
             die();
 
         } catch (\Exception $e) {
-            Logger::error('【WPImport plugin】移行実行エラー', [
+            Logger::error('【WXRImport plugin】移行実行エラー', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -128,7 +128,7 @@ class Execute extends ACMS_POST
         \Acms\Services\Common\Logger $logger,
         \Acms\Services\Common\Lock $lockService
     ): void {
-        $logger->setDestinationPath(CACHE_DIR . 'wp-import-progress.json');
+        $logger->setDestinationPath(CACHE_DIR . 'wxr-import-progress.json');
         $logger->init();
 
         // 初期メッセージ
@@ -141,11 +141,11 @@ class Execute extends ACMS_POST
             $logger->addMessage('WXRファイルを解析中...', 5, 1, false);
 
             // エントリー・メディア収集
-            /** @var array<Acms\Plugins\WPImport\Services\WXR\WXREntry> $entries */
+            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXREntry> $entries */
             $entries = [];
-            /** @var array<Acms\Plugins\WPImport\Services\WXR\WXREntry> $media */
+            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXREntry> $media */
             $medias = [];
-            /** @var array<Acms\Plugins\WPImport\Services\WXR\WXRCategory> $categories */
+            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXRCategory> $categories */
             $categories = [];
             foreach ($this->parser->parse($filePath) as $item) {
                 if ($item['post_type'] === 'attachment') {
@@ -187,7 +187,7 @@ class Execute extends ACMS_POST
 
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】移行処理中のエラー', Common::exceptionArray($th));
+            Logger::error('【WXRImport plugin】移行処理中のエラー', Common::exceptionArray($th));
 
             $logger->error('移行処理中にエラーが発生しました: ' . $th->getMessage());
         } finally {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Helpers;
+namespace Acms\Plugins\WxrImport\Services\Helpers;
 
 /**
  * コード生成ヘルパークラス

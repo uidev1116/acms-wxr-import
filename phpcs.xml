@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<ruleset name="WPImport Plugin Coding Standards">
-    <description>WordPress Import Plugin coding standards based on PSR-12</description>
+<ruleset name="WXRImport Plugin Coding Standards">
+    <description>WXRImport Plugin coding standards based on PSR-12</description>
 
     <!-- ファイル検索対象 -->
     <file>src/</file>

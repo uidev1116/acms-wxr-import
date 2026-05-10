@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Import;
+namespace Acms\Plugins\WxrImport\Services\Import;
 
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
 use Acms\Services\Facades\Application as Container;
-use Acms\Plugins\WPImport\Services\WXR\WXREntry;
-use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
-use Acms\Plugins\WPImport\Services\WXR\WXRCategory;
-use Acms\Plugins\WPImport\Services\Media\Downloader;
-use Acms\Plugins\WPImport\Services\Content\ContentProcessor;
+use Acms\Plugins\WxrImport\Services\WXR\WXREntry;
+use Acms\Plugins\WxrImport\Services\WXR\WXRMedia;
+use Acms\Plugins\WxrImport\Services\WXR\WXRCategory;
+use Acms\Plugins\WxrImport\Services\Media\Downloader;
+use Acms\Plugins\WxrImport\Services\Content\ContentProcessor;
 
 /**
  * 最適化されたバッチ処理システム
@@ -123,7 +123,7 @@ class BatchProcessor
             return $results;
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】統合処理エラー', [
+            Logger::error('【WXRImport plugin】統合処理エラー', [
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString()
             ]);
@@ -198,7 +198,7 @@ class BatchProcessor
             $results['entry_error'] = $entryResults['error_count'];
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】バッチ処理中の致命的エラー', Common::exceptionArray($th));
+            Logger::error('【WXRImport plugin】バッチ処理中の致命的エラー', Common::exceptionArray($th));
             $progressLogger->error('バッチ処理中に致命的エラーが発生しました: ' . $th->getMessage());
         }
 
@@ -256,7 +256,7 @@ class BatchProcessor
                     // コンテンツ処理を適用（メディアマッピングがなくても実行）
                     $this->applyContentProcessing($entry, $mediaMapping);
 
-                    $result = $this->entryImporter->importEntry($entry, $settings, $categoryMap);
+                    $result = $this->entryImporter->importEntry($entry, $settings, $categoryMap, $mediaMapping);
                     $results[] = $result;
 
                     if ($result['success']) {
@@ -267,7 +267,7 @@ class BatchProcessor
                     }
                 } catch (\Throwable $th) {
                     $errorCount++;
-                    Logger::error('【WPImport plugin】エントリー処理エラー', Common::exceptionArray($th, [
+                    Logger::error('【WXRImport plugin】エントリー処理エラー', Common::exceptionArray($th, [
                         'wp_post_id' => $entry->wpPostId,
                         'title' => $entry->title,
                     ]));
@@ -379,7 +379,7 @@ class BatchProcessor
                         'success' => false,
                         'error' => $th->getMessage()
                     ];
-                    Logger::error('【WPImport plugin】メディア処理エラー', Common::exceptionArray($th, [
+                    Logger::error('【WXRImport plugin】メディア処理エラー', Common::exceptionArray($th, [
                         'wp_post_id' => $media->wpPostId,
                     ]));
                 }
@@ -431,7 +431,7 @@ class BatchProcessor
 
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】コンテンツ処理エラー', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】コンテンツ処理エラー', Common::exceptionArray($th, [
                 'wp_post_id' => $entry->wpPostId,
                 'title' => $entry->title,
             ]));
@@ -514,7 +514,7 @@ class BatchProcessor
             return $categoryMap;
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】カテゴリー作成エラー', [
+            Logger::error('【WXRImport plugin】カテゴリー作成エラー', [
                 'error' => $th->getMessage(),
                 'trace' => $th->getTraceAsString(),
                 'categories' => array_map(function($cat) {

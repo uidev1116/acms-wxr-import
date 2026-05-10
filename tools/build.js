@@ -7,7 +7,7 @@ const co = require('co');
 const { zipPromise } = require('./lib/system.js');
 
 const srcDir = 'src'
-const zipDir = 'WPImport'
+const zipDir = 'WXRImport'
 
 const ignores = [
   '.git',

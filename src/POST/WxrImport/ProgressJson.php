@@ -1,6 +1,6 @@
 <?php
 
-namespace Acms\Plugins\WPImport\POST\WpImport;
+namespace Acms\Plugins\WxrImport\POST\WxrImport;
 
 use Acms\Services\Facades\Application;
 use Acms\Services\Facades\Common;
@@ -12,7 +12,7 @@ class ProgressJson extends ACMS_POST
     {
         $logger = Application::make('common.logger');
         assert($logger instanceof \Acms\Services\Common\Logger);
-        $logger->setDestinationPath(CACHE_DIR . 'wp-import-progress.json');
+        $logger->setDestinationPath(CACHE_DIR . 'wxr-import-progress.json');
         $output = [
             'message' => 'No log found',
             'status' => 'notfound',

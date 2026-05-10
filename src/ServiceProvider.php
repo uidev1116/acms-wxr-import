@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport;
+namespace Acms\Plugins\WxrImport;
 
 use ACMS_App;
 use Acms\Services\Facades\Application as Container;
@@ -19,7 +19,7 @@ class ServiceProvider extends ACMS_App
     /**
      * @var string
      */
-    public $name = 'WPImport';
+    public $name = 'WXRImport';
 
     /**
      * @var string
@@ -34,7 +34,7 @@ class ServiceProvider extends ACMS_App
     /**
      * @var bool|string
      */
-    public $menu = 'wp_import_index';
+    public $menu = 'wxr_import_index';
 
     /**
      * @var string
@@ -56,7 +56,7 @@ class ServiceProvider extends ACMS_App
         $inject = InjectTemplate::singleton();
 
         // 各画面のテンプレート注入
-        if (ADMIN === 'app_wp_import_index') {
+        if (ADMIN === 'app_wxr_import_index') {
             $inject->add('admin-topicpath', PLUGIN_DIR . $this->name . '/template/admin/topicpath.html');
             $inject->add('admin-main', PLUGIN_DIR . $this->name . '/template/admin/main.html');
         }
@@ -74,31 +74,31 @@ class ServiceProvider extends ACMS_App
         assert($container instanceof \Acms\Services\Container);
 
         // WXR関連サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\WXR\Parser::class, \Acms\Plugins\WPImport\Services\WXR\Parser::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\WXR\Parser::class, \Acms\Plugins\WxrImport\Services\WXR\Parser::class);
 
-        $container->singleton(\Acms\Plugins\WPImport\Services\WXR\EntryExtractor::class, \Acms\Plugins\WPImport\Services\WXR\EntryExtractor::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\WXR\EntryExtractor::class, \Acms\Plugins\WxrImport\Services\WXR\EntryExtractor::class);
 
         // Import関連サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\Import\EntryImporter::class, \Acms\Plugins\WPImport\Services\Import\EntryImporter::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Import\EntryImporter::class, \Acms\Plugins\WxrImport\Services\Import\EntryImporter::class);
 
         // メディア関連サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\WXR\MediaExtractor::class, \Acms\Plugins\WPImport\Services\WXR\MediaExtractor::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\WXR\MediaExtractor::class, \Acms\Plugins\WxrImport\Services\WXR\MediaExtractor::class);
 
-        $container->singleton(\Acms\Plugins\WPImport\Services\Media\Downloader::class, \Acms\Plugins\WPImport\Services\Media\Downloader::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Media\Downloader::class, \Acms\Plugins\WxrImport\Services\Media\Downloader::class);
 
-        $container->singleton(\Acms\Plugins\WPImport\Services\Import\MediaImporter::class, \Acms\Plugins\WPImport\Services\Import\MediaImporter::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Import\MediaImporter::class, \Acms\Plugins\WxrImport\Services\Import\MediaImporter::class);
 
         // バッチ処理サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\Import\BatchProcessor::class, \Acms\Plugins\WPImport\Services\Import\BatchProcessor::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Import\BatchProcessor::class, \Acms\Plugins\WxrImport\Services\Import\BatchProcessor::class);
 
         // カテゴリー・タグ作成サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\Import\CategoryCreator::class, \Acms\Plugins\WPImport\Services\Import\CategoryCreator::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Import\CategoryCreator::class, \Acms\Plugins\WxrImport\Services\Import\CategoryCreator::class);
 
         // コンテンツ処理サービス
-        $container->singleton(\Acms\Plugins\WPImport\Services\Content\ContentProcessor::class, \Acms\Plugins\WPImport\Services\Content\ContentProcessor::class);
+        $container->singleton(\Acms\Plugins\WxrImport\Services\Content\ContentProcessor::class, \Acms\Plugins\WxrImport\Services\Content\ContentProcessor::class);
 
-        $container->singleton('wp-import.progress-lock', function () {
-            return new CommonLock(CACHE_DIR . 'wp-import-progress-lock');
+        $container->singleton('wxr-import.progress-lock', function () {
+            return new CommonLock(CACHE_DIR . 'wxr-import-progress-lock');
         });
     }
 
@@ -139,13 +139,13 @@ class ServiceProvider extends ACMS_App
     public function install()
     {
         // アップロード用ディレクトリの作成
-        $uploadDir = CACHE_DIR . 'wp-import/uploads/';
+        $uploadDir = CACHE_DIR . 'wxr-import/uploads/';
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
 
         // 進捗ファイル用ディレクトリの作成
-        $progressDir = CACHE_DIR . 'wp-import/progress/';
+        $progressDir = CACHE_DIR . 'wxr-import/progress/';
         if (!is_dir($progressDir)) {
             mkdir($progressDir, 0755, true);
         }

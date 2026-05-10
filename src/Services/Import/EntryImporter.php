@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Import;
+namespace Acms\Plugins\WxrImport\Services\Import;
 
 use Acms\Services\Facades\Database;
 use Acms\Services\Facades\Common;
@@ -10,9 +10,9 @@ use Acms\Services\Facades\Application;
 use SQL;
 use Field;
 use Acms\Services\Facades\Logger;
-use Acms\Plugins\WPImport\Services\WXR\WXREntry;
-use Acms\Plugins\WPImport\Services\Helpers\CodeGenerator;
-use Acms\Plugins\WPImport\Services\Unit\ContentUnitCreator;
+use Acms\Plugins\WxrImport\Services\WXR\WXREntry;
+use Acms\Plugins\WxrImport\Services\Helpers\CodeGenerator;
+use Acms\Plugins\WxrImport\Services\Unit\ContentUnitCreator;
 use Acms\Services\Unit\Repository as UnitRepository;
 use ACMS_RAM;
 
@@ -30,15 +30,16 @@ class EntryImporter
      *     target_blog_id: int
      * } $settings
      * @param array<int, int> $categoryMap WordPress カテゴリーIDからa-blog cms カテゴリーIDへのマッピング
+     * @param array<int, int> $mediaMapping WordPress attachment の post_id から a-blog cms media_id へのマッピング
      * @return array{success: bool, entry_id?: int, error?: string}
      */
-    public function importEntry(WXREntry $entry, array $settings, array $categoryMap = []): array
+    public function importEntry(WXREntry $entry, array $settings, array $categoryMap = [], array $mediaMapping = []): array
     {
         try {
             // 新規エントリーの作成
-            return $this->createNewEntry($entry, $settings, $categoryMap);
+            return $this->createNewEntry($entry, $settings, $categoryMap, $mediaMapping);
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】エントリーインポートエラー', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】エントリーインポートエラー', Common::exceptionArray($th, [
                 'wp_post_id' => $entry->wpPostId,
                 'title' => $entry->title
             ]));
@@ -62,9 +63,10 @@ class EntryImporter
      *     target_blog_id: int
      * } $settings
      * @param array<int, int> $categoryMap WordPress カテゴリーIDからa-blog cms カテゴリーIDへのマッピング
+     * @param array<int, int> $mediaMapping WordPress attachment の post_id から a-blog cms media_id へのマッピング
      * @return array{success: bool, entry_id: int, wp_post_id: int}
      */
-    private function createNewEntry(WXREntry $entry, array $settings, array $categoryMap): array
+    private function createNewEntry(WXREntry $entry, array $settings, array $categoryMap, array $mediaMapping = []): array
     {
         Database::connection()->beginTransaction();
 
@@ -75,8 +77,10 @@ class EntryImporter
                 throw new \Exception('エントリーデータの挿入に失敗しました');
             }
 
+            $featuredMediaId = $this->resolveFeaturedMediaId($entry, $mediaMapping);
+
             // エントリーフィールドの作成
-            $this->insertEntryFields($eid, $entry, $settings);
+            $this->insertEntryFields($eid, $entry, $settings, $featuredMediaId);
 
             // サブカテゴリーの関連付け（メインカテゴリー以外）
             if (count($categoryMap) > 0) {
@@ -174,8 +178,9 @@ class EntryImporter
      *     create_tags: bool,
      *     target_blog_id: int
      * } $settings
+     * @param int|null $featuredMediaId WordPress アイキャッチ（_thumbnail_id）に対応する a-blog cms のメディア ID（解決済み）
      */
-    private function insertEntryFields(int $eid, WXREntry $entry, array $settings): void
+    private function insertEntryFields(int $eid, WXREntry $entry, array $settings, ?int $featuredMediaId = null): void
     {
         $field = new Field();
 
@@ -203,8 +208,34 @@ class EntryImporter
             $field->setField('wp_featured_media_id', $entry->featuredMediaId);
         }
 
+        // メイン画像（メディア型カスタムフィールド）: config の main_image_field_name に対応する field_key は {key}@media
+        if ($featuredMediaId !== null && $featuredMediaId > 0) {
+            $mainImageFieldKey = \config('main_image_field_name', 'entry_main_image');
+            if ($mainImageFieldKey !== '') {
+                $field->setField($mainImageFieldKey . '@media', $featuredMediaId);
+            }
+        }
+
         // フィールドデータを保存
         Common::saveField('eid', $eid, $field);
+    }
+
+    /**
+     * WordPress の _thumbnail_id（$entry->featuredMediaId）を mediaMapping で a-blog cms の media_id に解決する
+     *
+     * @param array<int, int> $mediaMapping
+     */
+    private function resolveFeaturedMediaId(WXREntry $entry, array $mediaMapping): ?int
+    {
+        if ($entry->featuredMediaId === null || $entry->featuredMediaId <= 0) {
+            return null;
+        }
+        $wpAttachmentPostId = $entry->featuredMediaId;
+        if (!isset($mediaMapping[$wpAttachmentPostId])) {
+            return null;
+        }
+        $featuredMediaId = $mediaMapping[$wpAttachmentPostId];
+        return $featuredMediaId > 0 ? $featuredMediaId : null;
     }
 
     /**
@@ -434,12 +465,10 @@ class EntryImporter
             $contentUnitCreator = new ContentUnitCreator($unitRepository);
 
             // BlockEditorユニットを作成
-            $success = $contentUnitCreator->createContentUnit($entry, $eid, $settings['target_blog_id']);
+            $contentUnitCreator->createContentUnit($entry, $eid, $settings['target_blog_id']);
 
-            if (!$success) {
-            }
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】ユニット作成でエラーが発生', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】ユニット作成でエラーが発生', Common::exceptionArray($th, [
                 'eid' => $eid,
                 'wp_post_id' => $entry->wpPostId
             ]));

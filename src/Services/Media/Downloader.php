@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Acms\Plugins\WPImport\Services\Media;
+namespace Acms\Plugins\WxrImport\Services\Media;
 
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\LocalStorage;
 use Acms\Services\Facades\Common;
-use Acms\Plugins\WPImport\Services\WXR\WXRMedia;
+use Acms\Plugins\WxrImport\Services\WXR\WXRMedia;
 
 /**
  * WordPressメディアファイルのダウンロード機能
@@ -45,7 +45,7 @@ class Downloader
 
     public function __construct()
     {
-        $this->downloadDir = ARCHIVES_DIR . 'wp-import/media/';
+        $this->downloadDir = ARCHIVES_DIR . 'wxr-import/media/';
         $this->ensureDownloadDirectory();
     }
 
@@ -113,7 +113,7 @@ class Downloader
             return $downloadResult;
 
         } catch (\Throwable $th) {
-            Logger::error('【WPImport plugin】メディアダウンロードエラー', Common::exceptionArray($th, [
+            Logger::error('【WXRImport plugin】メディアダウンロードエラー', Common::exceptionArray($th, [
                 'wp_post_id' => $media->wpPostId,
                 'url' => $media->originalUrl
             ]));
@@ -469,7 +469,7 @@ class Downloader
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => 30,
             CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_USERAGENT => 'WPImport Plugin/1.0 (a-blog cms)',
+            CURLOPT_USERAGENT => 'WXRImport Plugin/1.0 (a-blog cms)',
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             // レスポンスサイズ制限

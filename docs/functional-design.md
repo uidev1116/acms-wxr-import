@@ -222,7 +222,7 @@ class ProgressJson extends ACMS_POST
     {
         $logger = Application::make('common.logger');
         assert($logger instanceof \Acms\Services\Common\Logger);
-        $logger->setDestinationPath(CACHE_DIR . 'wp-import-progress.json');
+        $logger->setDestinationPath(CACHE_DIR . 'wxr-import-progress.json');
 
         $output = [
             'message' => 'No log found',
@@ -291,7 +291,7 @@ public function processAll(
 
         return array_merge($processResults, ['category_success' => count($categoryMap)]);
     } catch (\Throwable $th) {
-        Logger::error('【WPImport plugin】統合処理エラー', [
+        Logger::error('【WXRImport plugin】統合処理エラー', [
             'error' => $th->getMessage(),
             'trace' => $th->getTraceAsString()
         ]);
@@ -360,9 +360,9 @@ public function processComplete(
 #### 実装ファイル構成
 
 ```
-GET/Admin/WpImport/Progress.php  # メイン統合画面
-POST/WpImport/Execute.php        # アップロード・移行実行処理
-POST/WpImport/ProgressJson.php   # 進捗データJSON取得API
+GET/Admin/WxrImport/Progress.php  # メイン統合画面
+POST/WxrImport/Execute.php        # アップロード・移行実行処理
+POST/WxrImport/ProgressJson.php   # 進捗データJSON取得API
 ```
 
 ### ワイヤフレーム：統合画面（初期状態）
@@ -488,7 +488,7 @@ public function processAll(...): array {
         // 処理実行
         return $this->processComplete($entries, $medias, $settings, $categoryMap, $progressLogger);
     } catch (\Throwable $th) {
-        Logger::error('【WPImport plugin】統合処理エラー', [
+        Logger::error('【WXRImport plugin】統合処理エラー', [
             'error' => $th->getMessage(),
             'trace' => $th->getTraceAsString()
         ]);
@@ -505,7 +505,7 @@ foreach ($batch as $entry) {
         } else {
             $errorCount++;
             // 処理継続（非致命的エラー）
-            Logger::warning('【WPImport plugin】エントリー処理失敗', [
+            Logger::warning('【WXRImport plugin】エントリー処理失敗', [
                 'wp_post_id' => $entry->wpPostId,
                 'title' => $entry->title,
                 'error' => $result['error'] ?? 'Unknown error'
@@ -514,7 +514,7 @@ foreach ($batch as $entry) {
     } catch (\Throwable $th) {
         $errorCount++;
         // 例外をキャッチして処理継続
-        Logger::error('【WPImport plugin】エントリー処理エラー', [
+        Logger::error('【WXRImport plugin】エントリー処理エラー', [
             'wp_post_id' => $entry->wpPostId,
             'title' => $entry->title,
             'error' => $th->getMessage(),

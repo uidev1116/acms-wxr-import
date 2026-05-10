@@ -1,12 +1,12 @@
 <?php
 
-namespace Acms\Plugins\WPImport\Services\WXR;
+namespace Acms\Plugins\WxrImport\Services\WXR;
 
 use XMLReader;
 use DOMDocument;
 use Exception;
 use Acms\Services\Facades\Logger;
-use Acms\Plugins\WPImport\Services\Helpers\CodeGenerator;
+use Acms\Plugins\WxrImport\Services\Helpers\CodeGenerator;
 use Acms\Services\Facades\LocalStorage;
 
 /**
