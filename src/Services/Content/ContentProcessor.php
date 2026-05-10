@@ -129,40 +129,38 @@ class ContentProcessor
     /**
      * メディアURLを置換
      *
+     * 解決済みの $mediaId が渡された場合は、a-blog cms のメディアテーブルから
+     * 実パス（archives/YYYY-MM/xxx.png 等）を引き、URL を組み立てる。
+     * $mediaId が無い場合は WordPress 側のパス構造を流用する後方互換のフォールバックを行う。
+     *
      * @param string $url
-     * @param array<int, int> $mediaMapping
+     * @param int|null $mediaId 解決済みの a-blog cms メディアID（処理元のブロックで判明している場合）
      * @return string
      */
-    private function replaceMediaUrl(string $url, array $mediaMapping): string
+    private function replaceMediaUrl(string $url, ?int $mediaId = null): string
     {
-        // キャッシュから確認
-        if (isset($this->mediaUrlCache[$url])) {
-            return $this->mediaUrlCache[$url];
+        $cacheKey = ($mediaId !== null ? $mediaId . ':' : '') . $url;
+        if (isset($this->mediaUrlCache[$cacheKey])) {
+            return $this->mediaUrlCache[$cacheKey];
         }
 
-        // WordPress のメディアURL パターンを解析
-        $wpPostId = $this->extractWpPostIdFromUrl($url);
-        if ($wpPostId && isset($mediaMapping[$wpPostId])) {
-            $mediaId = $mediaMapping[$wpPostId];
+        if ($mediaId !== null && $mediaId > 0) {
             $mediaData = $this->getMediaInfo($mediaId);
-
             if ($mediaData) {
-                // メディアタイプに応じてディレクトリを選択
                 $baseDir = $this->getMediaBaseDirectory($mediaData['type']);
                 $newUrl = '/' . DIR_OFFSET . $baseDir . $mediaData['path'];
-                $this->mediaUrlCache[$url] = $newUrl;
+                $this->mediaUrlCache[$cacheKey] = $newUrl;
                 return $newUrl;
             }
         }
 
-        // WordPressのwp-content/uploads構造を検出
+        // フォールバック: WordPressのwp-content/uploads構造を流用
         if (preg_match('/\/wp-content\/uploads\/(.+)$/', $url, $matches)) {
             $filePath = $matches[1];
-            // 拡張子からメディアタイプを推定
             $mediaType = $this->estimateMediaTypeFromUrl($url);
             $baseDir = $this->getMediaBaseDirectory($mediaType);
             $newUrl = '/' . DIR_OFFSET . $baseDir . $filePath;
-            $this->mediaUrlCache[$url] = $newUrl;
+            $this->mediaUrlCache[$cacheKey] = $newUrl;
             return $newUrl;
         }
 
@@ -239,24 +237,6 @@ class ContentProcessor
     }
 
     /**
-     * URLからWordPress投稿IDを抽出
-     *
-     * @param string $url
-     * @return int|null
-     */
-    private function extractWpPostIdFromUrl(string $url): ?int
-    {
-        // WordPress attachment URLのパターンを検索
-        // 例: https://example.com/?attachment_id=123
-        if (preg_match('/[?&]attachment_id=(\d+)/', $url, $matches)) {
-            return intval($matches[1]);
-        }
-
-        // その他のパターンは今後追加
-        return null;
-    }
-
-    /**
      * WordPressブロックコメントを解析してブロック情報を抽出
      *
      * @param string $content
@@ -274,8 +254,10 @@ class ContentProcessor
     {
         $blocks = [];
 
-        // WordPressブロックコメントのパターン
-        $pattern = '/<!-- wp:(\w+)(?:\s+(\{[^}]*\}))?\s*-->(.*?)<!-- \/wp:\1\s*-->/s';
+        // 変換対象は image / file ブロックのみ。
+        // wp:columns / wp:column / wp:group などのコンテナにネストされていても拾えるよう、
+        // 対象ブロック名で直接マッチする。属性 JSON はネストオブジェクトに耐えるよう非貪欲マッチ。
+        $pattern = '/<!-- wp:(image|file)(?:\s+(\{.*?\}))?\s*-->(.*?)<!-- \/wp:\1\s*-->/s';
 
         if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
             foreach ($matches as $match) {
@@ -459,8 +441,8 @@ class ContentProcessor
             ];
         }
 
-        // URLを変換
-        $newUrl = $this->replaceMediaUrl($originalUrl, $mediaMapping);
+        // URLを変換（解決済みの mediaId を渡して a-blog cms 側の実パスを使う）
+        $newUrl = $this->replaceMediaUrl($originalUrl, $mediaId);
         if ($newUrl !== $originalUrl) {
             $replacedUrls[$originalUrl] = $newUrl;
             $replacedCount = 1;
@@ -514,8 +496,8 @@ class ContentProcessor
             ];
         }
 
-        // URLを変換
-        $newUrl = $this->replaceMediaUrl($originalUrl, $mediaMapping);
+        // URLを変換（解決済みの mediaId を渡して a-blog cms 側の実パスを使う）
+        $newUrl = $this->replaceMediaUrl($originalUrl, $mediaId);
         if ($newUrl !== $originalUrl) {
             $replacedUrls[$originalUrl] = $newUrl;
             $replacedCount = 1;
