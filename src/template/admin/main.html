@@ -31,139 +31,169 @@
   <!-- END_IF -->
 </div>
 <!-- END_MODULE Admin_Errors -->
-<!-- BEGIN_MODULE Admin_Import_Message -->
 
 
 <!-- BEGIN_MODULE Admin_WxrImport_Progress -->
 <!-- BEGIN_IF [{processing}/eq/1]-->
 <h2 class="acms-admin-admin-title2"><!--T-->WordPressインポート状況<!--/T--></h2>
-<div id="js-background-wxr-import">
-  <div class="js-progress acms-admin-progress acms-admin-progress-striped acms-admin-active"
-       style="display: none;">
-    <div class="acms-admin-progress-bar">
-      <span></span>
-    </div>
-  </div>
-  <script type="text/template" class="js-processing-template">
-    <% if (!processing && success) { %>
-    <p class="acms-admin-alert acms-admin-alert-info">
-      <!--T-->インポートが完了しました。<!--/T-->
-    </p>
-    <% } else if (!processing && error) { %>
-    <p class="acms-admin-alert acms-admin-alert-warning">
-      <!--T-->インポートに失敗しました。<!--/T-->
-    </p>
-    <% } %>
-
-    <ul>
-      <% _.each(processList, function(item) { %>
-      <% if (item.status === 'ng') { %>
-      <li class="acms-admin-text-danger">[Error] <%= item.message %></li>
-      <% } else { %>
-      <li><%= item.message %></li>
-      <% } %>
-      <% }) %>
-    </ul>
-  </script>
-  <div class="js-processing-box"></div>
-</div>
-
+<div
+  id="js-background-wxr-import"
+  data-poll-interval="2000"
+  data-timeout-ms="180000"
+></div>
+@verbatim
 <script>
-(function() {
-  const checkProgress = async (element, interval) => {
-    const template = element.querySelector('.js-processing-template')?.innerText;
-    const box = element.querySelector('.js-processing-box');
-    const progress = element.querySelector('.js-progress');
+(function () {
+  const escapeHTML = (value) =>
+    String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
 
-    if (!box || !template || !progress) {
+  const html = (strings, ...values) => {
+    let out = strings[0];
+    for (let i = 0; i < values.length; i++) {
+      out += escapeHTML(values[i]) + strings[i + 1];
+    }
+    return out;
+  };
+
+  const SUCCESS_TEXT = 'インポートが完了しました。';
+  const FAILURE_TEXT = 'インポートに失敗しました。';
+  const DEFAULT_PROGRESS_TEXT = 'インポート中...';
+  const TIMEOUT_TEXT = 'タイムアウトしました。リロードして処理が完了しているか確認してください。';
+
+  const mount = (root) => {
+    root.innerHTML = html`
+      <div
+        data-progress
+        class="acms-admin-progress acms-admin-progress-striped acms-admin-active"
+        style="display: none;"
+      >
+        <div data-progress-bar class="acms-admin-progress-bar">
+          <span data-progress-message></span>
+        </div>
+      </div>
+      <div data-box></div>
+    `;
+
+    return {
+      progress: root.querySelector('[data-progress]'),
+      progressBar: root.querySelector('[data-progress-bar]'),
+      progressMessage: root.querySelector('[data-progress-message]'),
+      box: root.querySelector('[data-box]'),
+      pollInterval: Number(root.dataset.pollInterval) || 2000,
+      timeoutMs: Number(root.dataset.timeoutMs) || 180000,
+    };
+  };
+
+  const successAlert = () => html`
+    <div role="alert" class="acms-admin-alert acms-admin-alert-info">
+      ${SUCCESS_TEXT}
+    </div>
+  `;
+
+  const failureAlert = () => html`
+    <div role="alert" class="acms-admin-alert acms-admin-alert-warning">
+      ${FAILURE_TEXT}
+    </div>
+  `;
+
+  const item = ({ status, message }) => {
+    const cls = status === 'ng' ? 'acms-admin-text-danger' : '';
+    const text = status === 'ng' ? `[Error] ${message}` : message;
+    return html`<li class="${cls}"><span>${text}</span></li>`;
+  };
+
+  const fetchProgress = async () => {
+    const formData = new FormData();
+    formData.append('ACMS_POST_WxrImport_ProgressJson', 'exec');
+    formData.append('formToken', window.csrfToken);
+
+    const response = await fetch(window.location.href, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-CSRF-Token': window.csrfToken,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+
+    return response.json();
+  };
+
+  const applyTimeout = (json, timeoutMs) => {
+    if (!json.updatedAt) return false;
+    const updatedAt = new Date(json.updatedAt).getTime();
+    if (Date.now() - updatedAt <= timeoutMs) return false;
+    json.error = TIMEOUT_TEXT;
+    return true;
+  };
+
+  const renderProgressBar = (json, refs) => {
+    const { progress, progressBar, progressMessage } = refs;
+    if (!json.processing) {
+      progress.style.display = 'none';
       return;
     }
-
-    const progressBar = progress.querySelector('.acms-admin-progress-bar');
-    if (!progressBar) {
-      return;
-    }
-
-    const progressMessage = progress.querySelector('span');
-
-    try {
-      const formData = new FormData();
-      formData.append('ACMS_POST_WxrImport_ProgressJson', 'exec');
-      formData.append('formToken', window.csrfToken);
-
-      const response = await fetch(window.location.href, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-CSRF-Token': window.csrfToken,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
-
-      const json = await response.json();
-
-      // タイムアウト処理
-      if (json.updatedAt) {
-        const updatedAt = new Date(json.updatedAt).getTime();
-        const now = Date.now();
-        const timeout = 180 * 1000; // 180秒
-
-        if (now - updatedAt > timeout) {
-          json.error = 'タイムアウトしました。リロードして処理が完了しているか確認してください。';
-          clearInterval(interval);
-        }
-      }
-
-      // Underscoreテンプレートエンジンを使用してHTMLを生成
-      const engine = window._.template(template);
-      box.innerHTML = engine(json);
-
-      if (json.processing) {
-        progress.style.display = '';
-        if (json.error) {
-          progressBar.style.width = '100%';
-          progressBar.classList.add('acms-admin-progress-bar-danger');
-          progressBar.classList.remove('acms-admin-progress-bar-info');
-          if (progressMessage) {
-            progressMessage.innerHTML = json.error;
-          }
-        } else {
-          const percentage = json.percentage || 0;
-          progressBar.style.width = `${percentage}%`;
-          progressBar.classList.add('acms-admin-progress-bar-info');
-          progressBar.classList.remove('acms-admin-progress-bar-danger');
-          if (progressMessage) {
-            progressMessage.innerHTML = json.inProgress || 'インポート中...';
-          }
-        }
-      } else {
-        // 処理完了時はプログレスバーを非表示
-        progress.style.display = 'none';
-        clearInterval(interval);
-      }
-
-    } catch (error) {
-      console.error('Progress check failed:', error);
-      clearInterval(interval);
+    progress.style.display = '';
+    if (json.error) {
+      progressBar.style.width = '100%';
+      progressBar.classList.add('acms-admin-progress-bar-danger');
+      progressBar.classList.remove('acms-admin-progress-bar-info');
+      if (progressMessage) progressMessage.textContent = json.error;
+    } else {
+      progressBar.style.width = `${json.percentage ?? 0}%`;
+      progressBar.classList.add('acms-admin-progress-bar-info');
+      progressBar.classList.remove('acms-admin-progress-bar-danger');
+      if (progressMessage) progressMessage.textContent = json.inProgress || DEFAULT_PROGRESS_TEXT;
     }
   };
 
-  const initProgressCheck = (selector, intervalTime = 1000) => {
-    const progressElement = document.querySelector(selector);
-    if (progressElement) {
-      const intervalId = setInterval(() => {
-        checkProgress(progressElement, intervalId);
-      }, intervalTime);
+  const renderBox = (json, refs) => {
+    const parts = [];
+
+    if (!json.processing && json.success) {
+      parts.push(successAlert());
+    } else if (!json.processing && json.error) {
+      parts.push(failureAlert());
     }
+
+    const items = (json.processList ?? []).map(item).join('');
+    parts.push(`<ul>${items}</ul>`);
+
+    refs.box.innerHTML = parts.join('');
   };
 
-  // ページ読み込み時にプログレス確認を開始
   document.addEventListener('DOMContentLoaded', () => {
-    initProgressCheck('#js-background-wxr-import', 2000);
+    const root = document.getElementById('js-background-wxr-import');
+    if (!root) return;
+
+    const refs = mount(root);
+
+    const intervalId = setInterval(async () => {
+      try {
+        const json = await fetchProgress();
+        const timedOut = applyTimeout(json, refs.timeoutMs);
+
+        renderProgressBar(json, refs);
+        renderBox(json, refs);
+
+        if (timedOut || !json.processing) {
+          clearInterval(intervalId);
+        }
+      } catch (error) {
+        console.error('Progress check failed:', error);
+        clearInterval(intervalId);
+      }
+    }, refs.pollInterval);
   });
 })();
 </script>
-
+@endverbatim
 <!-- ELSE -->
 <div class="acms-admin-panel">
   <div class="acms-admin-panel-header">
