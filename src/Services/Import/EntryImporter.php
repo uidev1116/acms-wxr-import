@@ -208,10 +208,13 @@ class EntryImporter
             $field->setField('wp_featured_media_id', $entry->featuredMediaId);
         }
 
-        // メイン画像（メディア型カスタムフィールド）: config の main_image_field_name に対応する field_key は {key}@media
+        // メイン画像（メディア型カスタムフィールド）: a-blog cms の編集画面互換のため
+        // {key} と {key}@media の両方に media_id を保存する。
+        // field_type='media' は {key}@media 行のみで、saveField() の正規表現により自動設定される。
         if ($featuredMediaId !== null && $featuredMediaId > 0) {
             $mainImageFieldKey = \config('main_image_field_name', 'entry_main_image');
             if ($mainImageFieldKey !== '') {
+                $field->setField($mainImageFieldKey, $featuredMediaId);
                 $field->setField($mainImageFieldKey . '@media', $featuredMediaId);
             }
         }
