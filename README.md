@@ -79,6 +79,19 @@ WordPress管理画面で以下の手順を実行：
 - WordPressのカスタムフィールドはa-blog cms側にも引き継がれます
 - 本文中のWordPress画像・ファイルブロックはa-blog cmsのブロック形式に変換され、その他のブロックはHTMLとしてそのまま保存されます
 
+## 自動付与されるカスタムフィールド
+
+WordPress側の情報を引き継ぐため、各エントリーには以下のカスタムフィールドが自動で付与されます。WordPress側のデータとの突き合わせや、テンプレートでの参照に利用できます。
+
+| フィールド名 | 内容 |
+| --- | --- |
+| `wp_post_id` | WordPressの投稿ID |
+| `wp_guid` | WordPressのGUID |
+| `wp_post_type` | WordPressの投稿タイプ（`post` / `page` など） |
+| `wp_featured_media_id` | WordPressのアイキャッチ画像の投稿ID（アイキャッチが設定されている場合のみ） |
+
+また、WordPressに設定されていたカスタムフィールドは、フィールド名の先頭に `wp_` を付けた名前でa-blog cms側に保存されます（例: `featured_image` → `wp_featured_image`）。
+
 ## 再実行時の注意
 
 - 同じWXRファイルを再度インポートすると、エントリーは重複して作成されます
