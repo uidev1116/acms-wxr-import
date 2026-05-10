@@ -10,9 +10,9 @@ const archiver = require('archiver');
  */
 exports.systemCmd = cmdString =>
   new Promise((resolve) => {
-    cmd.get(
+    cmd.run(
       cmdString,
-      (data, err, stderr) => {
+      (err, data, stderr) => {
         console.log(cmdString);
         console.log(data);
         if (err) {
