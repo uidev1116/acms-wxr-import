@@ -22,6 +22,9 @@ class Downloader
     /** @var string ローカル取り込みの許可ベースディレクトリ（この配下のみ受理） */
     private string $localPathBase;
 
+    /** @var array<int, string> private IP に解決されても許可するホスト名（lowercase 比較） */
+    private array $allowedPrivateHosts = [];
+
 
     /** @var int 最大ファイルサイズ（バイト） */
     private int $maxFileSize = 50 * 1024 * 1024; // 50MB
@@ -42,6 +45,20 @@ class Downloader
         $this->localPathBase = is_string($configured) && $configured !== ''
             ? $configured
             : ARCHIVES_DIR . 'wxr-import/source/';
+
+        // 開発環境向けに、private 解決されても許可するホスト名を opt-in で設定可能にする。
+        // 例: config('wxr_import_allowed_private_hosts', 'host.docker.internal,localhost')
+        // デフォルトは空（厳格にブロック）。
+        $allowedHosts = config('wxr_import_allowed_private_hosts');
+        if (is_string($allowedHosts) && $allowedHosts !== '') {
+            $allowedHosts = preg_split('/[,\s]+/', $allowedHosts) ?: [];
+        } elseif (!is_array($allowedHosts)) {
+            $allowedHosts = [];
+        }
+        $this->allowedPrivateHosts = array_values(array_filter(array_map(
+            static fn($v) => strtolower(trim((string)$v)),
+            $allowedHosts
+        )));
 
         $this->ensureDownloadDirectory();
         $this->ensureLocalPathBase();
@@ -685,6 +702,7 @@ class Downloader
      * URL がフェッチして安全か検証する。
      * - スキームが http / https である
      * - ホスト名の DNS 解決結果のすべての IP が public IP である
+     * - ただし $allowedPrivateHosts に登録されたホスト名は private 解決でも許可
      *
      * @return array{ok: bool, reason: string}
      */
@@ -700,9 +718,11 @@ class Downloader
             return ['ok' => false, 'reason' => 'ホスト名が空です'];
         }
 
+        $isExplicitlyAllowed = in_array(strtolower($host), $this->allowedPrivateHosts, true);
+
         // IP リテラルがそのまま入っているケースもカバーする
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            if (!$this->isPublicIp($host)) {
+            if (!$this->isPublicIp($host) && !$isExplicitlyAllowed) {
                 return ['ok' => false, 'reason' => 'プライベート/予約済みIPは禁止です: ' . $host];
             }
             return ['ok' => true, 'reason' => ''];
@@ -713,7 +733,7 @@ class Downloader
             return ['ok' => false, 'reason' => 'ホスト名解決に失敗しました: ' . $host];
         }
         foreach ($ips as $ip) {
-            if (!$this->isPublicIp($ip)) {
+            if (!$this->isPublicIp($ip) && !$isExplicitlyAllowed) {
                 return ['ok' => false, 'reason' => 'プライベート/予約済みIPに解決されました: ' . $ip];
             }
         }
