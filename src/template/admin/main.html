@@ -282,15 +282,15 @@
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="padding-top: 16px;">
+      <td colspan="2">
         <details>
           <summary>
             <!--T-->詳細設定（通常は変更不要）<!--/T-->
           </summary>
-          <table class="adminTable acms-admin-table-admin-edit" style="margin-top: 8px;">
+          <table class="acms-admin-table-admin-edit acms-admin-mt-2">
             <tr>
               <th>
-                <!--T-->ローカル取り込みベースディレクトリ<!--/T-->
+                <!--T-->ベースディレクトリ<!--/T-->
               </th>
               <td>
                 <input
@@ -301,7 +301,7 @@
                   placeholder="archives/wxr-import/source/"
                   class="acms-admin-form-width-full"
                 >
-                <p class="acms-admin-text-helper acms-admin-mt-1" style="font-weight: normal;">
+                <p class="acms-admin-text-helper acms-admin-mt-1">
                   <!--T-->wp:attachment_url にローカルパス／file:// が指定された場合に
                   読み込みを許可するベースディレクトリ。空欄ならコンフィグ値
                   (wxr_import_local_path_base) またはデフォルト archives/wxr-import/source/
@@ -311,7 +311,7 @@
             </tr>
             <tr>
               <th>
-                <!--T-->プライベート解決を許可するホスト<!--/T-->
+                <!--T-->プライベート許可ホスト<!--/T-->
               </th>
               <td>
                 <input
@@ -322,7 +322,7 @@
                   placeholder="host.docker.internal, localhost"
                   class="acms-admin-form-width-full"
                 >
-                <p class="acms-admin-text-helper acms-admin-mt-1" style="font-weight: normal;">
+                <p class="acms-admin-text-helper acms-admin-mt-1">
                   <!--T-->通常 SSRF 対策でプライベート／予約済み IP に解決されるホストは
                   拒否されるが、ローカル開発などで明示的に許可したいホスト名を
                   カンマ／空白区切りで指定する。例: host.docker.internal<!--/T-->
