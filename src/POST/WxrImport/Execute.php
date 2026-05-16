@@ -98,7 +98,9 @@ class Execute extends ACMS_POST
      *     include_media: bool,
      *     create_categories: bool,
      *     create_tags: bool,
-     *     target_blog_id: int
+     *     target_blog_id: int,
+     *     local_path_base: string,
+     *     allowed_private_hosts: string
      * }
      */
     private function getExecutionSettings(): array
@@ -109,6 +111,9 @@ class Execute extends ACMS_POST
             'create_categories' => $this->Post->get('create_categories') === 'on',
             'create_tags' => $this->Post->get('create_tags') === 'on', // a-blog cmsはタグ機能をサポートするため
             'target_blog_id' => BID,
+            // 管理画面で上書き可能な詳細設定。未入力なら Downloader 側のデフォルト（config 値）が使われる。
+            'local_path_base' => trim((string)$this->Post->get('local_path_base')),
+            'allowed_private_hosts' => trim((string)$this->Post->get('allowed_private_hosts')),
         ];
     }
 

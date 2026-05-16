@@ -100,6 +100,12 @@ class BatchProcessor
         ];
 
         try {
+            // 0. Downloader に管理画面の詳細設定を適用
+            $this->downloader->configure([
+                'local_path_base' => $settings['local_path_base'] ?? '',
+                'allowed_private_hosts' => $settings['allowed_private_hosts'] ?? '',
+            ]);
+
             // 1. カテゴリー作成（最初に実行）
             $categoryMap = [];
             if ($settings['create_categories'] && count($categories) > 0) {

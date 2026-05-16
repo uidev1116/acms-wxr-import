@@ -282,6 +282,58 @@
       </td>
     </tr>
     <tr>
+      <th colspan="2" style="padding-top: 16px;">
+        <details>
+          <summary>
+            <strong><!--T-->詳細設定（通常は変更不要）<!--/T--></strong>
+          </summary>
+          <table class="adminTable acms-admin-table-admin-edit" style="margin-top: 8px;">
+            <tr>
+              <th>
+                <!--T-->ローカル取り込みベースディレクトリ<!--/T-->
+              </th>
+              <td>
+                <input
+                  type="text"
+                  name="local_path_base"
+                  value=""
+                  size="60"
+                  placeholder="archives/wxr-import/source/"
+                  class="acms-admin-form-width-full"
+                >
+                <p class="acms-admin-text-help acms-admin-margin-top-mini">
+                  <!--T-->wp:attachment_url にローカルパス／file:// が指定された場合に
+                  読み込みを許可するベースディレクトリ。空欄ならコンフィグ値
+                  (wxr_import_local_path_base) またはデフォルト archives/wxr-import/source/
+                  が使われる。<!--/T-->
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <th>
+                <!--T-->プライベート解決を許可するホスト<!--/T-->
+              </th>
+              <td>
+                <input
+                  type="text"
+                  name="allowed_private_hosts"
+                  value=""
+                  size="60"
+                  placeholder="host.docker.internal, localhost"
+                  class="acms-admin-form-width-full"
+                >
+                <p class="acms-admin-text-help acms-admin-margin-top-mini">
+                  <!--T-->通常 SSRF 対策でプライベート／予約済み IP に解決されるホストは
+                  拒否されるが、ローカル開発などで明示的に許可したいホスト名を
+                  カンマ／空白区切りで指定する。例: host.docker.internal<!--/T-->
+                </p>
+              </td>
+            </tr>
+          </table>
+        </details>
+      </th>
+    </tr>
+    <tr>
       <th>
         <!--T-->インポート<!--/T-->
       </th>

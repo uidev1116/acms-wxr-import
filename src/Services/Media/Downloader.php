@@ -50,15 +50,10 @@ class Downloader
         // 例: config('wxr_import_allowed_private_hosts', 'host.docker.internal,localhost')
         // デフォルトは空（厳格にブロック）。
         $allowedHosts = config('wxr_import_allowed_private_hosts');
-        if (is_string($allowedHosts) && $allowedHosts !== '') {
-            $allowedHosts = preg_split('/[,\s]+/', $allowedHosts) ?: [];
-        } elseif (!is_array($allowedHosts)) {
+        if (!is_string($allowedHosts) && !is_array($allowedHosts)) {
             $allowedHosts = [];
         }
-        $this->allowedPrivateHosts = array_values(array_filter(array_map(
-            static fn($v) => strtolower(trim((string)$v)),
-            $allowedHosts
-        )));
+        $this->allowedPrivateHosts = $this->normalizeHostList($allowedHosts);
 
         $this->ensureDownloadDirectory();
         $this->ensureLocalPathBase();
@@ -761,7 +756,9 @@ class Downloader
      *
      * @param array{
      *     max_file_size?: int,
-     *     download_delay?: int
+     *     download_delay?: int,
+     *     local_path_base?: string,
+     *     allowed_private_hosts?: string|array<int, string>
      * } $config
      */
     public function configure(array $config): void
@@ -773,5 +770,31 @@ class Downloader
         if (isset($config['download_delay'])) {
             $this->downloadDelay = max(0, (int)$config['download_delay']);
         }
+
+        if (isset($config['local_path_base']) && is_string($config['local_path_base']) && $config['local_path_base'] !== '') {
+            $this->localPathBase = $config['local_path_base'];
+            $this->ensureLocalPathBase();
+        }
+
+        if (isset($config['allowed_private_hosts'])) {
+            $this->allowedPrivateHosts = $this->normalizeHostList($config['allowed_private_hosts']);
+        }
+    }
+
+    /**
+     * カンマ／空白区切り文字列または配列を、lowercase に整形したホスト名リストに正規化する。
+     *
+     * @param string|array<int, string> $value
+     * @return array<int, string>
+     */
+    private function normalizeHostList(string|array $value): array
+    {
+        if (is_string($value)) {
+            $value = preg_split('/[,\s]+/', $value) ?: [];
+        }
+        return array_values(array_filter(array_map(
+            static fn($v) => strtolower(trim((string)$v)),
+            $value
+        )));
     }
 }
