@@ -383,27 +383,27 @@ class Downloader
     /**
      * ファイル名をサニタイズ
      *
+     * a-blog cms は日本語ファイル名を受け付けるため、文字種でのフィルタリングは行わず、
+     * パストラバーサル防止と制御文字除去のみに留める。最終的なリネームは
+     * Media::storeImage() / Media::storeFile() 側に委譲する。
+     *
      * @param string $fileName
      * @return string
      */
     private function sanitizeFileName(string $fileName): string
     {
-        // 拡張子を分離
-        $pathInfo = pathinfo($fileName);
-        $name = $pathInfo['filename'];
-        $extension = $pathInfo['extension'] ?? '';
+        // ディレクトリ要素を除去（マルチバイト対応 basename）
+        $fileName = LocalStorage::mbBasename($fileName);
+        // 制御文字・NUL バイトを除去
+        $fileName = (string)preg_replace('/[\x00-\x1F\x7F]/u', '', $fileName);
+        // 先頭ドットは隠しファイル化されるため抑止
+        $fileName = ltrim($fileName, '.');
 
-        // 不正な文字を除去
-        $name = preg_replace('/[^a-zA-Z0-9\-_\.]/', '_', $name);
-        $name = preg_replace('/_+/', '_', $name);
-        $name = trim($name, '_');
-
-        // ファイル名が空の場合はデフォルト名を使用
-        if (!$name) {
-            $name = 'unnamed_' . uniqid();
+        if ($fileName === '') {
+            $fileName = 'unnamed_' . uniqid();
         }
 
-        return $name . ($extension ? '.' . $extension : '');
+        return $fileName;
     }
 
     /**
