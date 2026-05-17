@@ -12,6 +12,7 @@ use Acms\Plugins\WxrImport\Services\WXR\WXRMedia;
 use Acms\Plugins\WxrImport\Services\WXR\WXRCategory;
 use Acms\Plugins\WxrImport\Services\Media\Downloader;
 use Acms\Plugins\WxrImport\Services\Content\ContentProcessor;
+use Acms\Plugins\WxrImport\Services\Helpers\MemoryLimit;
 
 /**
  * 最適化されたバッチ処理システム
@@ -51,8 +52,8 @@ class BatchProcessor
         $this->downloader = Container::make(Downloader::class);
         $this->contentProcessor = Container::make(ContentProcessor::class);
 
-        // メモリ制限の80%を上限とする
-        $this->memoryLimit = (int)(memory_get_usage() * 0.8);
+        // PHP の memory_limit をバイト換算した実上限
+        $this->memoryLimit = MemoryLimit::inBytes();
     }
 
     /**
@@ -476,25 +477,23 @@ class BatchProcessor
      */
     private function optimizeBatchSize(int $requestedSize, int $totalItems): int
     {
-        // メモリ使用量に基づく動的調整
+        // 管理画面で指定されたサイズを尊重しつつ、メモリ逼迫時のみ縮小する。
+        // memory_limit=-1 のときは PHP_INT_MAX が返るため、availableMemory は常に潤沢扱いになる。
         $memoryUsage = memory_get_usage(true);
         $availableMemory = $this->memoryLimit - $memoryUsage;
 
-        if ($availableMemory < ($this->memoryLimit * 0.3)) {
-            // メモリが30%以下の場合はバッチサイズを削減
+        if ($availableMemory < (int) ($this->memoryLimit * 0.20)) {
+            // 残メモリ 20% 未満なら半減
             $adjustedSize = max(self::MIN_BATCH_SIZE, intval($requestedSize * 0.5));
-        } elseif ($availableMemory > ($this->memoryLimit * 0.7)) {
-            // メモリに余裕がある場合はバッチサイズを増加
-            $adjustedSize = min(self::MAX_BATCH_SIZE, intval($requestedSize * 1.5));
         } else {
             $adjustedSize = $requestedSize;
         }
 
-        // 最小・最大値で制限
-        $adjustedSize = max(self::MIN_BATCH_SIZE, min(self::MAX_BATCH_SIZE, $adjustedSize));
+        // 最小値と「要求値そのもの」で挟む（増加方向には伸ばさない）
+        $adjustedSize = max(self::MIN_BATCH_SIZE, min($requestedSize, $adjustedSize));
 
         // 総数がバッチサイズより小さい場合は調整
-        return min($adjustedSize, $totalItems);
+        return $totalItems > 0 ? min($adjustedSize, $totalItems) : $adjustedSize;
     }
 
     /**
