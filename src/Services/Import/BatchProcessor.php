@@ -111,11 +111,7 @@ class BatchProcessor
         ];
 
         try {
-            // 0. Downloader に管理画面の詳細設定を適用
-            $this->downloader->configure([
-                'local_path_base' => $settings['local_path_base'] ?? '',
-                'allowed_private_hosts' => $settings['allowed_private_hosts'] ?? '',
-            ]);
+            // 0. Downloader はコンストラクタで .env から設定済み。configure() の追加呼び出しは不要。
 
             // 1. カテゴリー作成（最初に実行）
             $categoryMap = [];
@@ -379,8 +375,8 @@ class BatchProcessor
             // バッファを解放してメモリピークを抑える
             $buffer = [];
 
-            // バッチ間のポーズ（設定で延長可能、デフォルト 0）
-            $pause = (int) (config('wxr_import_batch_pause_microseconds') ?: 0);
+            // バッチ間のポーズ（.env で延長可能、デフォルト 0）
+            $pause = (int) env('WXR_IMPORT_BATCH_PAUSE_MICROSECONDS', '0');
             if ($pause > 0) {
                 usleep($pause);
             }
