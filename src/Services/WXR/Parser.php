@@ -118,36 +118,112 @@ class Parser
             throw new Exception("WXRファイルが見つかりません: {$filePath}");
         }
 
-        $data = LocalStorage::get($filePath, dirname($filePath));
-        if (!$data) {
-            throw new Exception("WXRファイルの読み込みに失敗しました: {$filePath}");
-        }
-        $data = LocalStorage::removeIllegalCharacters($data); // 不正な文字コードを削除
-        $this->validateXml($data);
-        $this->reader->XML($data);
+        // 不正文字を除去したクリーニング済み一時ファイルを 1 回だけ作り、
+        // 以降の 1 パス目（タクソノミ抽出）と 2 パス目（item yield）は
+        // この一時ファイルを XMLReader::open() でストリーム読み込みする。
+        $cleanedPath = $this->createCleanedTempFile($filePath);
 
-        // カテゴリ・タグの定義を最初に取得
-        $this->extractTaxonomyDefinitions();
-
-        // XMLReaderを再初期化
-        $this->reader->close();
-        $this->reader = new XMLReader();
-        $this->reader->XML($data);
+        $previousInternalErrors = libxml_use_internal_errors(true);
 
         try {
-            $itemCount = 0;
+            // 1 パス目: カテゴリ・タグの定義を取得
+            if (!$this->reader->open($cleanedPath)) {
+                $this->throwForLibxmlErrors('XMLファイルを開けませんでした');
+            }
+            $this->extractTaxonomyDefinitions();
+            $this->reader->close();
+
+            // 1 パス目で libxml fatal が出ていれば例外化（validateXml の代替）
+            $this->throwForLibxmlErrors('XMLファイルが正しくありません。または正しいエクスポートファイルではありません。');
+            libxml_clear_errors();
+
+            // 2 パス目: item を順次 yield
+            $this->reader = new XMLReader();
+            if (!$this->reader->open($cleanedPath)) {
+                $this->throwForLibxmlErrors('XMLファイルを開けませんでした');
+            }
+
             while ($this->reader->read()) {
                 if ($this->reader->nodeType === XMLReader::ELEMENT && $this->reader->name === 'item') {
                     $item = $this->extractItem();
                     if ($item) {
-                        $itemCount++;
                         yield $item;
                     }
                 }
             }
         } finally {
             $this->reader->close();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousInternalErrors);
+            if ($cleanedPath !== null && is_file($cleanedPath)) {
+                @unlink($cleanedPath);
+            }
         }
+    }
+
+    /**
+     * 入力 WXR ファイルから不正文字（ASCII 制御文字 + DEL）を除去した
+     * 一時ファイルを作成して返す。
+     *
+     * 不正文字の対象範囲はすべて ASCII (0x00-0x7F) に収まるため、
+     * UTF-8 のマルチバイト継続バイト（0x80-0xBF）に影響せず、
+     * チャンク境界をまたいでも結果は完全に等価になる。
+     * 参照: ablogcms/php/Services/Storage/Filesystem.php removeIllegalCharacters()
+     */
+    private function createCleanedTempFile(string $filePath): string
+    {
+        $cleanedPath = (defined('CACHE_DIR') ? CACHE_DIR : sys_get_temp_dir() . '/')
+            . 'wxr-import-clean-' . uniqid('', true) . '.xml';
+
+        $src = @fopen($filePath, 'rb');
+        if ($src === false) {
+            throw new Exception("WXRファイルの読み込みに失敗しました: {$filePath}");
+        }
+        $dst = @fopen($cleanedPath, 'wb');
+        if ($dst === false) {
+            fclose($src);
+            throw new Exception("一時ファイルを作成できませんでした: {$cleanedPath}");
+        }
+
+        try {
+            while (!feof($src)) {
+                $chunk = fread($src, 1024 * 1024); // 1MB チャンク
+                if ($chunk === false) {
+                    throw new Exception("WXRファイルの読み込み中にエラーが発生しました");
+                }
+                if ($chunk === '') {
+                    continue;
+                }
+                $cleaned = preg_replace('/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/', '', $chunk);
+                if ($cleaned === null) {
+                    throw new Exception("WXRファイルの不正文字除去に失敗しました");
+                }
+                if ($cleaned !== '' && fwrite($dst, $cleaned) === false) {
+                    throw new Exception("一時ファイルへの書き込みに失敗しました");
+                }
+            }
+        } finally {
+            fclose($src);
+            fclose($dst);
+        }
+
+        return $cleanedPath;
+    }
+
+    /**
+     * 直前の libxml エラー（fatal）を集約して例外を投げる。fatal がなければ何もしない。
+     */
+    private function throwForLibxmlErrors(string $defaultMessage): void
+    {
+        $errors = libxml_get_errors();
+        foreach ($errors as $err) {
+            if ($err->level === LIBXML_ERR_FATAL) {
+                libxml_clear_errors();
+                $msg = trim($err->message);
+                throw new \RuntimeException($defaultMessage . ($msg !== '' ? ' (' . $msg . ')' : ''));
+            }
+        }
+        libxml_clear_errors();
     }
 
     /**
@@ -590,25 +666,6 @@ class Parser
     }
 
 
-    /**
-     * XMLファイルを検証
-     *
-     * XML文字列の形式が正しいかを検証します。
-     * 不正な場合は例外を投げます。
-     *
-     * @param string $data 検証対象のXML文字列
-     * @return void
-     * @throws \RuntimeException XMLが不正な形式の場合
-     */
-    private function validateXml(string $data): void
-    {
-        $reader = new XMLReader();
-        $reader->XML($data);
-        $reader->setParserProperty(XMLReader::VALIDATE, true);
-        if (!$reader->isValid()) {
-            $reader->close();
-            throw new \RuntimeException('XMLファイルが正しくありません。または正しいエクスポートファイルではありません。');
-        }
-        $reader->close();
-    }
+    // 旧 validateXml() は廃止し、libxml_use_internal_errors() + libxml_get_errors() による
+    // ストリーム読み込み中の fatal 検出（throwForLibxmlErrors()）に置き換えた。
 }
