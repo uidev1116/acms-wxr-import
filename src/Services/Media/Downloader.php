@@ -304,33 +304,35 @@ class Downloader
                 }
             }
 
-            // HTTPダウンロード
+            // HTTPダウンロード（ボディはディスクへ直接書き出される）
             try {
-                $result = $this->download($url);
+                $result = $this->download($url, $localPath);
 
                 if (!$result['success']) {
                     return $result;
                 }
 
-                $body = $result['body'];
                 $httpCode = $result['http_code'];
 
                 if ($httpCode !== 200) {
+                    @unlink($localPath);
                     return [
                         'success' => false,
                         'error' => sprintf('ダウンロード失敗 (HTTP %d)', $httpCode)
                     ];
                 }
             } catch (\Throwable $th) {
+                @unlink($localPath);
                 return [
                     'success' => false,
                     'error' => 'ダウンロードに失敗しました: ' . $th->getMessage()
                 ];
             }
 
-            // ファイルサイズチェック
-            $fileSize = strlen($body);
+            // ファイルサイズチェック（書き出し済みファイルのサイズで判定）
+            $fileSize = (int) @filesize($localPath);
             if ($fileSize === 0) {
+                @unlink($localPath);
                 return [
                     'success' => false,
                     'error' => 'ダウンロードしたファイルが空です'
@@ -338,17 +340,10 @@ class Downloader
             }
 
             if ($fileSize > $this->maxFileSize) {
+                @unlink($localPath);
                 return [
                     'success' => false,
                     'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($fileSize)
-                ];
-            }
-
-            // ファイルを保存
-            if (!LocalStorage::put($localPath, $body)) {
-                return [
-                    'success' => false,
-                    'error' => 'ファイルの保存に失敗しました: ' . $localPath
                 ];
             }
 
@@ -565,17 +560,14 @@ class Downloader
 
     /**
      * HTTPダウンロード（リダイレクトを自前で最大 5 ホップ追跡し、
-     * 各ホップでスキーム・到達 IP を検証することで SSRF を防止する）
+     * 各ホップでスキーム・到達 IP を検証することで SSRF を防止する）。
      *
-     * @param string $url
-     * @return array{
-     *     success: bool,
-     *     body?: string,
-     *     http_code?: int,
-     *     error?: string
-     * }
+     * レスポンスボディはメモリに乗せず、直接 $localPath に書き出す。
+     * 3xx の場合は書き出した内容を破棄して次ホップへ進む。
+     *
+     * @return array{success: bool, http_code?: int, error?: string}
      */
-    private function download(string $url): array
+    private function download(string $url, string $localPath): array
     {
         if (!function_exists('curl_init')) {
             return [
@@ -600,7 +592,7 @@ class Downloader
                 ];
             }
 
-            $hopResult = $this->fetchSingleHop($currentUrl);
+            $hopResult = $this->fetchSingleHop($currentUrl, $localPath);
             if (!$hopResult['success']) {
                 return $hopResult;
             }
@@ -608,6 +600,8 @@ class Downloader
             // 3xx かつ Location があれば次ホップへ。それ以外はここで完了。
             $location = $hopResult['location'] ?? '';
             if ($hopResult['http_code'] >= 300 && $hopResult['http_code'] < 400 && $location !== '') {
+                // 3xx のレスポンスボディ（通常は短いHTMLや空）は破棄
+                @unlink($localPath);
                 if ($hop === $maxHops) {
                     return [
                         'success' => false,
@@ -627,7 +621,6 @@ class Downloader
 
             return [
                 'success' => true,
-                'body' => $hopResult['body'],
                 'http_code' => $hopResult['http_code'],
             ];
         }
@@ -639,19 +632,37 @@ class Downloader
     }
 
     /**
-     * 1 ホップ分の cURL 取得
+     * 1 ホップ分の cURL 取得。レスポンスボディは $localPath に直接ストリーム書き込みする。
+     * ヘッダは CURLOPT_HEADERFUNCTION でメモリ上に逐次収集し、本文と混在させない。
      *
-     * @return array{success: bool, body?: string, http_code?: int, location?: string, error?: string}
+     * @return array{success: bool, http_code?: int, location?: string, error?: string}
      */
-    private function fetchSingleHop(string $url): array
+    private function fetchSingleHop(string $url, string $localPath): array
     {
+        $fp = @fopen($localPath, 'wb');
+        if ($fp === false) {
+            return [
+                'success' => false,
+                'error' => 'ダウンロード先ファイルを開けませんでした: ' . $localPath,
+            ];
+        }
+
+        $location = '';
         // PHP 8.0+ では curl_init() は CurlHandle を返し、デストラクタで自動解放される。
-        // よって curl_close() は不要。
         $curl = curl_init();
 
         curl_setopt_array($curl, [
             CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
+            // ボディは fp にストリーム書き出し。RETURNTRANSFER は使わない。
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_FILE => $fp,
+            // ヘッダは関数コールバックで行単位に収集し、Location のみ取り出す
+            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$location) {
+                if (preg_match('/^Location:\s*(.+?)\s*$/i', $line, $m) === 1) {
+                    $location = trim($m[1]);
+                }
+                return strlen($line);
+            },
             // リダイレクトは自前で 1 ホップずつ URL 検証するため無効化
             CURLOPT_FOLLOWLOCATION => false,
             // 危険なスキーム（file://, gopher://, dict:// 等）の利用を遮断
@@ -663,44 +674,27 @@ class Downloader
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_MAXFILESIZE => $this->maxFileSize,
-            // Location を取り出すためヘッダ込みで取得
-            CURLOPT_HEADER => true,
         ]);
 
-        $raw = curl_exec($curl);
-        if ($raw === false) {
+        $ok = curl_exec($curl);
+        fclose($fp);
+
+        if ($ok === false) {
+            $err = curl_error($curl) ?: 'Unknown error';
+            @unlink($localPath);
             return [
                 'success' => false,
-                'error' => 'HTTPダウンロードエラー: ' . (curl_error($curl) ?: 'Unknown error'),
+                'error' => 'HTTPダウンロードエラー: ' . $err,
             ];
         }
 
-        $headerSize = (int)curl_getinfo($curl, CURLINFO_HEADER_SIZE);
-        $httpCode = (int)curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $rawString = (string)$raw;
-        $rawHeader = substr($rawString, 0, $headerSize);
-        $body = (string)substr($rawString, $headerSize);
+        $httpCode = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
 
         return [
             'success' => true,
-            'body' => $body,
             'http_code' => $httpCode,
-            'location' => $this->extractLocationHeader($rawHeader),
+            'location' => $location,
         ];
-    }
-
-    /**
-     * cURL の生ヘッダー文字列から最終ホップの Location ヘッダーを抽出する
-     */
-    private function extractLocationHeader(string $rawHeader): string
-    {
-        $location = '';
-        foreach (preg_split('/\r?\n/', $rawHeader) ?: [] as $line) {
-            if (preg_match('/^Location:\s*(.+)$/i', trim($line), $m) === 1) {
-                $location = trim($m[1]);
-            }
-        }
-        return $location;
     }
 
     /**
