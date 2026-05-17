@@ -39,7 +39,7 @@ class ServiceProvider extends ACMS_App
     /**
      * @var string
      */
-    public $desc = 'WordPress のデータを a-blog cms にインポートするための拡張アプリです。';
+    public $desc = 'WordPress のデータを a-blog cms にインポートするためのプラグイン（拡張アプリ）です。';
 
     public function __construct()
     {

@@ -1,6 +1,6 @@
 {
   "name": "uidev1116/acms-wxr-import",
-  "description": "WordPress のデータを a-blog cms にインポートするための拡張アプリです。",
+  "description": "WordPress のデータを a-blog cms にインポートするためのプラグイン（拡張アプリ）です。",
   "scripts": {
     "lint": [
       "vendor/bin/phpcs --standard=phpcs.xml || true"
