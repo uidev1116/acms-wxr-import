@@ -91,6 +91,28 @@ class Execute extends ACMS_POST
     }
 
     /**
+     * Pass 2: WXR を再ストリームし、attachment 以外の item を WXREntry に変換して yield する。
+     *
+     * Parser は内部でクリーニング済み一時ファイルを保持しないが、open() を 2 回呼ぶ間に
+     * もう一度入力ファイルから一時ファイルを生成するため、本ジェネレータは Pass 1 完了後に
+     * 開始される必要がある。BatchProcessor 側はバッファサイズ分だけ受け取って即解放する。
+     *
+     * @return \Generator<int, \Acms\Plugins\WxrImport\Services\WXR\WXREntry>
+     */
+    private function streamEntries(string $filePath): \Generator
+    {
+        foreach ($this->parser->parse($filePath) as $item) {
+            if ($item['post_type'] === 'attachment') {
+                continue;
+            }
+            $entry = $this->entryExtractor->extractEntry($item);
+            if ($entry !== null) {
+                yield $entry;
+            }
+        }
+    }
+
+    /**
      * 実行設定を取得
      *
      * @return array{
@@ -142,16 +164,19 @@ class Execute extends ACMS_POST
         try {
             $lockService->tryLock();
 
-            // WXR解析
+            // WXR解析（2 パス・ストリーミング）
+            //  - Pass 1: WXR 全件を走査し、カテゴリ／メディアを軽量オブジェクトとして収集する。
+            //    エントリー本文は持ち回らず、件数だけカウントする。
+            //  - Pass 2: BatchProcessor::processAll() に Generator を渡し、エントリー本文は
+            //    バッチサイズ分だけメモリに乗せて即解放する。
             $logger->addMessage('WXRファイルを解析中...', 5, 1, false);
 
-            // エントリー・メディア収集
-            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXREntry> $entries */
-            $entries = [];
-            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXREntry> $media */
+            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXRMedia> $medias */
             $medias = [];
             /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXRCategory> $categories */
             $categories = [];
+            $expectedEntries = 0;
+
             foreach ($this->parser->parse($filePath) as $item) {
                 if ($item['post_type'] === 'attachment') {
                     $media = $this->mediaExtractor->extractMedia($item);
@@ -159,10 +184,8 @@ class Execute extends ACMS_POST
                         $medias[] = $media;
                     }
                 } else {
-                    $entry = $this->entryExtractor->extractEntry($item);
-                    if ($entry !== null) {
-                        $entries[] = $entry;
-                    }
+                    // Pass 1 では件数だけ数え、WXREntry は構築しない（本文を持たない軽量パス）
+                    $expectedEntries++;
                 }
 
                 // カテゴリーの収集
@@ -171,7 +194,7 @@ class Execute extends ACMS_POST
                 }
             }
 
-            $logger->addMessage('解析完了: エントリー' . count($entries) . '件, メディア' . count($medias) . '件', 10, 1, true);
+            $logger->addMessage('解析完了: エントリー' . $expectedEntries . '件, メディア' . count($medias) . '件', 10, 1, true);
 
             // タグ機能の処理結果ログ
             $logger->addMessage('タグ処理: エントリーと一緒に処理されます', 0, 1, true);
@@ -180,11 +203,12 @@ class Execute extends ACMS_POST
             $logger->addMessage('統合処理を開始（カテゴリー、メディア、エントリー）...', 5, 1, false);
 
             $batchResults = $this->batchProcessor->processAll(
-                $entries,
+                $this->streamEntries($filePath),
                 $medias,
                 $categories,
                 $settings,
-                $logger
+                $logger,
+                $expectedEntries
             );
 
             $logger->addMessage('WordPress移行が完了しました', 10, 1, true);

@@ -84,11 +84,12 @@ class BatchProcessor
      * }
      */
     public function processAll(
-        array $entries,
+        iterable $entries,
         array $medias,
         array $categories,
         array $settings,
-        \Acms\Services\Common\Logger $progressLogger
+        \Acms\Services\Common\Logger $progressLogger,
+        ?int $expectedEntries = null
     ): array {
         $startTime = microtime(true);
         $startMemory = memory_get_usage(true);
@@ -120,7 +121,7 @@ class BatchProcessor
             }
 
             // 2. 既存のprocessCompleteメソッドを呼び出し
-            $processResults = $this->processComplete($entries, $medias, $settings, $categoryMap, $progressLogger);
+            $processResults = $this->processComplete($entries, $medias, $settings, $categoryMap, $progressLogger, $expectedEntries);
 
             // 結果をマージ
             $results['entry_success'] = $processResults['entry_success'];
@@ -165,11 +166,12 @@ class BatchProcessor
      * }
      */
     public function processComplete(
-        array $entries,
+        iterable $entries,
         array $medias,
         array $settings,
         array $categoryMap,
-        \Acms\Services\Common\Logger $progressLogger
+        \Acms\Services\Common\Logger $progressLogger,
+        ?int $expectedEntries = null
     ): array {
         $startTime = microtime(true);
         $startMemory = memory_get_usage(true);
@@ -206,7 +208,8 @@ class BatchProcessor
                 $settings,
                 $categoryMap,
                 $mediaMapping,
-                $progressLogger
+                $progressLogger,
+                $expectedEntries
             );
             $results['entry_success'] = $entryResults['success_count'];
             $results['entry_error'] = $entryResults['error_count'];
@@ -243,14 +246,30 @@ class BatchProcessor
      * }
      */
     private function processEntryBatch(
-        array $entries,
+        iterable $entries,
         array $settings,
         array $categoryMap,
         array $mediaMapping,
-        \Acms\Services\Common\Logger $progressLogger
+        \Acms\Services\Common\Logger $progressLogger,
+        ?int $expectedEntries = null
     ): array {
-        $totalEntries = count($entries);
-        $batchSize = $this->optimizeBatchSize($settings['batch_size'], count($entries));
+        // expectedEntries が無い場合は配列前提でカウント。Generator を渡された場合は 0 扱い。
+        if ($expectedEntries === null) {
+            if (is_array($entries)) {
+                $expectedEntries = count($entries);
+            } elseif ($entries instanceof \Countable) {
+                $expectedEntries = count($entries);
+            } else {
+                $expectedEntries = 0;
+            }
+        }
+        $totalEntries = $expectedEntries;
+        $batchSize = $this->optimizeBatchSize($settings['batch_size'], $totalEntries > 0 ? $totalEntries : self::MAX_BATCH_SIZE);
+        if ($batchSize < self::MIN_BATCH_SIZE) {
+            $batchSize = self::MIN_BATCH_SIZE;
+        }
+        $batchCount = $totalEntries > 0 ? (int) ceil($totalEntries / $batchSize) : 0;
+
         $successCount = 0;
         $errorCount = 0;
         $results = [];
@@ -260,18 +279,39 @@ class BatchProcessor
         $entryRepository = Container::make('entry.repository');
         assert($entryRepository instanceof EntryRepository);
 
-        foreach (array_chunk($entries, $batchSize) as $batchIndex => $batch) {
+        $batchIndex = 0;
+        /** @var list<WXREntry> $buffer */
+        $buffer = [];
+
+        $flush = function () use (
+            &$buffer,
+            &$batchIndex,
+            &$successCount,
+            &$errorCount,
+            &$results,
+            $settings,
+            $categoryMap,
+            $mediaMapping,
+            $progressLogger,
+            $entryRepository,
+            $batchCount,
+            $totalEntries
+        ): void {
+            if ($buffer === []) {
+                return;
+            }
             $batchStartTime = microtime(true);
+            $batchIndex++;
 
             $progressLogger->addMessage(
-                "エントリーバッチ " . ($batchIndex + 1) . "/" . ceil($totalEntries / $batchSize) . " 処理中",
+                "エントリーバッチ {$batchIndex}" . ($batchCount > 0 ? "/{$batchCount}" : '') . " 処理中",
                 0, 1, false
             );
 
             // バッチ先頭で sort 値の MAX を1回だけ取得し、以降はメモリ上で払い出す
             $allocator = new SortValueAllocator((int) $settings['target_blog_id'], $entryRepository);
 
-            foreach ($batch as $entry) {
+            foreach ($buffer as $entry) {
                 try {
                     // コンテンツ処理を適用（メディアマッピングがなくても実行）
                     $this->applyContentProcessing($entry, $mediaMapping);
@@ -283,7 +323,6 @@ class BatchProcessor
                         $successCount++;
                     } else {
                         $errorCount++;
-                        // エントリー処理失敗
                     }
                 } catch (\Throwable $th) {
                     $errorCount++;
@@ -295,22 +334,31 @@ class BatchProcessor
             }
 
             $batchTime = microtime(true) - $batchStartTime;
-            $processedCount = ($batchIndex + 1) * $batchSize;
-            $processedCount = min($processedCount, $totalEntries);
-
+            $processed = $successCount + $errorCount;
             $progressLogger->addMessage(
-                "処理済み: {$processedCount}/{$totalEntries} (成功: {$successCount}, エラー: {$errorCount}) - 処理時間: " . number_format($batchTime, 2) . "秒",
-                (50 / ceil($totalEntries / $batchSize)), 1, true
+                "処理済み: {$processed}" . ($totalEntries > 0 ? "/{$totalEntries}" : '')
+                . " (成功: {$successCount}, エラー: {$errorCount}) - 処理時間: "
+                . number_format($batchTime, 2) . "秒",
+                $batchCount > 0 ? (50 / $batchCount) : 0, 1, true
             );
 
+            // バッファを解放してメモリピークを抑える
+            $buffer = [];
+
             // バッチ間のポーズ（設定で延長可能、デフォルト 0）
-            if ($batchIndex < ceil($totalEntries / $batchSize) - 1) {
-                $pause = (int) (config('wxr_import_batch_pause_microseconds') ?: 0);
-                if ($pause > 0) {
-                    usleep($pause);
-                }
+            $pause = (int) (config('wxr_import_batch_pause_microseconds') ?: 0);
+            if ($pause > 0) {
+                usleep($pause);
+            }
+        };
+
+        foreach ($entries as $entry) {
+            $buffer[] = $entry;
+            if (count($buffer) >= $batchSize) {
+                $flush();
             }
         }
+        $flush(); // 残りバッファ
 
         return [
             'success_count' => $successCount,
