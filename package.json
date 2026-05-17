@@ -1,6 +1,6 @@
 {
   "name": "acms-wxr-import",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "WordPress のデータを a-blog cms にインポートするためのプラグイン（拡張アプリ）です。",
   "main": "index.js",
   "scripts": {
