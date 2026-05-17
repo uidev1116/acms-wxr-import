@@ -115,27 +115,27 @@ class Execute extends ACMS_POST
     /**
      * 実行設定を取得
      *
+     * 業務判断（include_media / create_categories / create_tags）はフォーム入力、
+     * 環境固定設定（local_path_base / allowed_private_hosts / max_file_size 等）は
+     * Downloader / BatchProcessor がコンストラクタで .env から自前で取得する。
+     * batch_size のみ「フォーム > .env 既定 > 50」のハイブリッドで解決する。
+     *
      * @return array{
      *     batch_size: int,
      *     include_media: bool,
      *     create_categories: bool,
      *     create_tags: bool,
-     *     target_blog_id: int,
-     *     local_path_base: string,
-     *     allowed_private_hosts: string
+     *     target_blog_id: int
      * }
      */
     private function getExecutionSettings(): array
     {
         return [
-            'batch_size' => (int)($this->Post->get('batch_size') ?: 50),
+            'batch_size' => (int) ($this->Post->get('batch_size') ?: env('WXR_IMPORT_DEFAULT_BATCH_SIZE', '50')),
             'include_media' => $this->Post->get('include_media') === 'on',
             'create_categories' => $this->Post->get('create_categories') === 'on',
             'create_tags' => $this->Post->get('create_tags') === 'on', // a-blog cmsはタグ機能をサポートするため
             'target_blog_id' => BID,
-            // 管理画面で上書き可能な詳細設定。未入力なら Downloader 側のデフォルト（config 値）が使われる。
-            'local_path_base' => trim((string)$this->Post->get('local_path_base')),
-            'allowed_private_hosts' => trim((string)$this->Post->get('allowed_private_hosts')),
         ];
     }
 
