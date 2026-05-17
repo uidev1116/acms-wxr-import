@@ -810,35 +810,30 @@ class Downloader
     }
 
     /**
-     * 設定を変更
+     * テストや特殊運用での上書き用フック。
      *
-     * 許可MIMEタイプは a-blog cms コアの configArray('file_extension_*') 由来で
+     * 通常運用では .env 経由で値が入るため本メソッドの呼び出しは不要。
+     * 単体テスト等で一時的に値を差し替えたい場合のためだけに残している。
+     *
+     * local_path_base / allowed_private_hosts は本メソッドからは差し替え不可とする
+     * （セキュリティに直結する設定は .env 専用にすることで、フォーム等からの誤上書きを防ぐ）。
+     *
+     * 許可 MIME タイプは a-blog cms コアの configArray('file_extension_*') 由来で
      * 自動的に構築されるため、本メソッドからの差し替えは受け付けない。
      *
      * @param array{
      *     max_file_size?: int,
      *     download_delay?: int,
-     *     local_path_base?: string,
-     *     allowed_private_hosts?: string|array<int, string>
      * } $config
      */
     public function configure(array $config): void
     {
         if (isset($config['max_file_size'])) {
-            $this->maxFileSize = max(1024, (int)$config['max_file_size']);
+            $this->maxFileSize = max(1024, (int) $config['max_file_size']);
         }
 
         if (isset($config['download_delay'])) {
-            $this->downloadDelay = max(0, (int)$config['download_delay']);
-        }
-
-        if (isset($config['local_path_base']) && is_string($config['local_path_base']) && $config['local_path_base'] !== '') {
-            $this->localPathBase = $config['local_path_base'];
-            $this->ensureLocalPathBase();
-        }
-
-        if (isset($config['allowed_private_hosts'])) {
-            $this->allowedPrivateHosts = $this->normalizeHostList($config['allowed_private_hosts']);
+            $this->downloadDelay = max(0, (int) $config['download_delay']);
         }
     }
 
