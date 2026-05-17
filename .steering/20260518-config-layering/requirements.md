@@ -79,8 +79,8 @@ a-blog cms 標準で `.env`（`vlucas/phpdotenv`）と `env(string $key, string 
 - `BatchProcessor::processAll()` 内の `$this->downloader->configure([...])` 呼び出し（旧 `local_path_base` / `allowed_private_hosts` のフォーム伝播）を**削除**する。
 
 ### AC-6: ドキュメント整備
-- リポジトリルートに `.env.example` を新設し、上記6キーをコメント付きで記載する。
-- `README.md` に「設定階層」セクションを追加し、フォーム／`.env` / `config()` の使い分け方針を1段落で明文化する。
+- `README.md` に「設定階層」セクションを追加し、フォーム／`.env` / `config()` の使い分け方針を明文化する。
+- `.env` のキー一覧と各キーの説明（コメント付き）は **README.md 内にコードブロックで直書き** する（独立した `.env.example` ファイルは作らない）。READMEを1枚読めば全設定が把握できる体験を優先する。
 
 ### AC-7: ロールバック容易性
 - 各タスクは独立してコミット可能とし、問題発生時に粒度単位で revert できるようにする。

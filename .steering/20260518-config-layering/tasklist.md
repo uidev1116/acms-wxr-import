@@ -142,44 +142,37 @@
 
 ---
 
-## Task 6: `.env.example` の新設（AC-6）
-
-**新規ファイル**: `.env.example`（プラグインリポジトリのルート）
-
-- [ ] design.md に記載のテンプレートを `.env.example` として配置する。
-- [ ] 全キーをコメントアウトの状態（`#` プレフィックス）で記載するのではなく、**キー名と空値の組として記載**する。これによりサンプルから単純コピーで `.env` に貼り付けられる。
-- [ ] コミット: `Add .env.example documenting WXRImport environment keys`
-
-**完了条件**:
-- リポジトリルートに `.env.example` が存在し、6 キー（`WXR_IMPORT_*`）が列挙されている。
-
----
-
-## Task 7: README.md の更新（AC-6）
+## Task 6: README.md に「設定階層」セクションを追加（AC-6）
 
 **ファイル**: `README.md`
 
-- [ ] design.md の「README.md への追記」セクションを参考に、以下を追加する:
-  - 「## 設定階層」セクション（`.env` / `config()` / フォーム の役割を1表で示す）
-  - `.env.example` への参照
+独立した `.env.example` ファイルは作らず、**README 内にコードブロックで直書き** する方針とする（`Dotenv` の読み込み先は `ablogcms/.env` で、プラグイン側に置いた `.env.example` は単純コピー対象にならないため、README 1 枚で完結させた方が UX が良い）。
+
+- [ ] 既存の「Tips」セクションと「トラブルシューティング」セクションの間に「## 設定階層」を新設する。
+- [ ] 内容:
+  - 3 層モデル（`.env` / DB コンフィグ / 管理画面フォーム）を表で示す
+  - 主要 `.env` キー（6 個）の早見表
+  - design.md「C-6: ドキュメント整備」のコードブロックをそのまま貼る
+  - `WXR_IMPORT_ALLOWED_PRIVATE_HOSTS` の本番運用注意（SSRF 防御）
 - [ ] **未リリースのため Breaking Changes 節は作成しない**。
 - [ ] コミット: `Document the .env-based configuration layer in README`
 
 **完了条件**:
-- README に「設定階層」セクションが存在し、`.env.example` への参照がある。
+- README に「設定階層」セクションが存在し、`.env` キー一覧と本番運用注意が含まれている。
+- リポジトリルートに `.env.example` ファイルは作成しない。
 
 ---
 
-## Task 8: 最終チェック（AC-3 / AC-7）
+## Task 7: 最終チェック（AC-3 / AC-7）
 
 **実装変更なし。検証のみ**:
 
 - [ ] `grep -rn "config('wxr_import_\|config(\"wxr_import_" src/` が**0 件**であることを確認（C-3 / AC-3 達成）。
-- [ ] `grep -rn "local_path_base\|allowed_private_hosts" src/` が `Downloader.php` のプロパティ宣言とコメント以外で 0 件であることを確認（フォーム伝播の撤去確認）。
-- [ ] `find src -name '*.php' -exec php -l {} \;` で 22 ファイル全 OK。
+- [ ] `grep -rn "local_path_base\|allowed_private_hosts" src/` が `Downloader.php` / `Execute.php` のコメント以外で 0 件であることを確認（フォーム伝播の撤去確認）。
+- [ ] `find src -name '*.php' -exec php -l {} \;` で全 PHP ファイル lint OK。
 - [ ] 旧 `20260511-security-hardening` の LFI / SSRF テストケースを再実施し、`.env` 未設定で全て期待どおり拒否されることを確認（セキュリティ後退の不在）。
 - [ ] 旧 `20260518-improve-performance` のフェーズ計測ログが `BatchProcessor::processAll()` 戻り値に出続けることを確認。
-- [ ] `git log master --oneline` でコミット 7 本（Task 1-7）が積まれていることを確認。
+- [ ] `git log master --oneline` でコミット 6 本（Task 1-6）が積まれていることを確認。
 
 **完了条件**: 上記全てパス。
 
@@ -195,11 +188,10 @@
 | `src/Services/Import/BatchProcessor.php` | Task 3 |
 | `src/POST/WxrImport/Execute.php` | Task 4 |
 | `src/template/admin/main.html` | Task 5 |
-| `.env.example` (新規) | Task 6 |
-| `README.md` | Task 7 |
+| `README.md` | Task 6 |
 
 Task 1 → 2 は同一ファイルだが触る場所が異なる（コンストラクタ vs `configure()`）。同じ順で進める限り衝突しない。
 
-**特に注意**: Task 3 の `configure([...])` 呼び出し削除と Task 2 の `configure()` シグネチャ縮小は依存関係がある（先に呼び出し元の削除＝Task 3 完了後に Task 2 のシグネチャ変更を入れた方が、不要な引数渡しで PHP の警告が出るリスクを下げられる）。順序を **Task 1 → Task 3 → Task 2 → Task 4-7** とすることで、シグネチャ縮小時には誰も古い API を呼んでいない状態を保てる。タスクリストの上記順序はこのリスクを織り込んだ並びになっている。
+**特に注意**: Task 3 の `configure([...])` 呼び出し削除と Task 2 の `configure()` シグネチャ縮小は依存関係がある（先に呼び出し元の削除＝Task 3 完了後に Task 2 のシグネチャ変更を入れた方が、不要な引数渡しで PHP の警告が出るリスクを下げられる）。順序を **Task 1 → Task 3 → Task 2 → Task 4-6 → Task 7（検証）** とすることで、シグネチャ縮小時には誰も古い API を呼んでいない状態を保てる。タスクリストの上記順序はこのリスクを織り込んだ並びになっている。
 
 各コミット前に `php -l` を必ず実行。

@@ -20,8 +20,7 @@
 | `src/Services/Import/BatchProcessor.php` | `config('wxr_import_batch_pause_microseconds')` を `env()` に置換。`downloader->configure([...])` の呼び出しを削除 |
 | `src/POST/WxrImport/Execute.php` | `getExecutionSettings()` から `local_path_base` / `allowed_private_hosts` を削除し、`batch_size` の既定を `env('WXR_IMPORT_DEFAULT_BATCH_SIZE', '50')` に変更 |
 | `src/template/admin/main.html` | `<details>` 詳細設定ブロック（`local_path_base` / `allowed_private_hosts` 入力欄）を削除 |
-| `.env.example`（新規） | プラグインの環境変数キーをコメント付きで列挙 |
-| `README.md` | 「設定階層」セクションと Breaking Changes 注記を追加 |
+| `README.md` | 「設定階層」セクションを追加。`.env` のキー一覧とサンプルもコードブロックで直書きする |
 
 ---
 
@@ -233,65 +232,64 @@ if ($pause > 0) {
 
 ---
 
-## C-6: `.env.example` の新設
+## C-6: ドキュメント整備（README インライン方式）
 
-リポジトリルートに `.env.example` を新設し、プラグインの環境変数の意図とデフォルト値を列挙する。本ファイルはサンプルであり、実環境ではプロジェクト全体の `.env`（`ablogcms/.env`）に値を書き込む形になる。
+a-blog cms 標準の `.env` は `Dotenv\Dotenv::createImmutable(SCRIPT_DIR)->load()` で `SCRIPT_DIR/.env`（インストール先の `ablogcms/.env`）だけを読む。プラグイン側に独立した `.env.example` を置いてもユーザーがそこから直接コピーする運用にならず、README を見れば良い体験になる。
 
-```env
+そのため **キー一覧と各キーの説明は README.md 内のコードブロックで直書き** する。独立した `.env.example` ファイルは作成しない。
+
+README に追記するコードブロックの内容は次のとおり:
+
+```
 # ------------------------------------------------------------------
-# WXRImport プラグインの環境設定（ablogcms/.env に追記）
+# WXRImport プラグインの環境設定
 #
-# どのキーも省略可。省略時は WXRImport 内のデフォルトが使われる。
+# 実環境では a-blog cms 設置ディレクトリの `.env` に追記してください。
+# 本ファイルはキー一覧の参考資料です。
+#
+# どのキーも省略可能。省略時は WXRImport 内のデフォルトが使われます。
 # ------------------------------------------------------------------
 
-# ローカル取り込みの許可ベースディレクトリ
+# ローカル取り込みの許可ベースディレクトリ。
 # wp:attachment_url にローカルパス／file:// が指定された場合、ここで指定された
-# ディレクトリ配下のファイルのみ読み込みを許可する（LFI 防御）。
+# ディレクトリ配下のファイルのみ読み込みを許可します（LFI 防御）。
+# デフォルト: ARCHIVES_DIR . 'wxr-import/source/'
 WXR_IMPORT_LOCAL_PATH_BASE=
 
 # private/予約 IP に解決されるホストでも許可するホスト名のカンマ／空白区切り。
 # 例: host.docker.internal,localhost
-# 本番では必ず空欄のままにすること（SSRF 防御を緩める設定）。
+# 本番では必ず空欄のままにしてください（SSRF 防御を緩める設定です）。
+# デフォルト: 空（厳格にブロック）
 WXR_IMPORT_ALLOWED_PRIVATE_HOSTS=
 
-# メディアファイルの最大サイズ（バイト）。デフォルト 50MB。
-# php.ini の upload_max_filesize / post_max_size と整合する値を設定する。
+# メディアファイルの最大サイズ（バイト）。
+# php.ini の upload_max_filesize / post_max_size と整合する値を設定してください。
+# デフォルト: 52428800（50MB）
 WXR_IMPORT_MAX_FILE_SIZE=
 
-# 同一ドメインへの連続ダウンロード間隔（マイクロ秒）。デフォルト 500000 (0.5 秒)。
+# 同一ドメインへの連続ダウンロード間隔（マイクロ秒）。
+# デフォルト: 500000（0.5 秒）
 WXR_IMPORT_DOWNLOAD_DELAY_MICROSECONDS=
 
-# エントリーバッチ間の追加ポーズ（マイクロ秒）。デフォルト 0（無効）。
-# DB 負荷が高い環境で各バッチ後に休止を入れたい場合のみ設定する。
+# エントリーバッチ間の追加ポーズ（マイクロ秒）。
+# DB 負荷が高い環境で各バッチ後に休止を入れたい場合のみ設定してください。
+# デフォルト: 0（無効）
 WXR_IMPORT_BATCH_PAUSE_MICROSECONDS=
 
-# 管理画面で batch_size を入力しなかった場合の既定値。デフォルト 50。
+# 管理画面で batch_size を入力しなかった場合の既定値。
+# デフォルト: 50
 WXR_IMPORT_DEFAULT_BATCH_SIZE=
 ```
 
-注: a-blog cms の `Dotenv\Dotenv::createImmutable(SCRIPT_DIR)->load()` は `SCRIPT_DIR/.env` だけを読むため、本ファイルはあくまで「キー一覧の参考資料」。実際に値を入れる場所はインストール先の `ablogcms/.env`（プロジェクトルートの `ablogcms` ディレクトリ直下）。
-
 ---
 
-## README.md への追記
+## README.md への追記内容
 
-```markdown
-## 設定階層
+README に追加するセクション構成:
 
-WXRImport は設定値を性格別に3層に分ける:
-
-| 層 | API | 寿命 | 例 |
-|----|-----|------|-----|
-| `.env` (`ablogcms/.env`) | `env('KEY', default)` | デプロイ単位 | パス、許可ホスト、サイズ上限 |
-| DB コンフィグ | `config('key', default)` | ブログ単位 | （現在は未使用） |
-| 管理画面フォーム | `$this->Post->get('key')` | 1 リクエスト | メディア取得・カテゴリ作成・タグ作成の業務判断 |
-
-「環境ごとに変わる」「画面から触らせたくない」設定は `.env`、「今回どう取り込むか」の業務判断はフォーム、と覚えると良い。
-
-### 利用可能な .env キー
-
-`.env.example` を参照。
-```
+1. **「## 設定階層」**: フォーム／`.env`／`config()` の3層モデルを表で示し、「環境ごとに変わる」「画面から触らせたくない」「セキュリティに直結」は `.env`、業務判断はフォーム、と簡潔に明文化する。
+2. **「### 利用可能な `.env` キー」**: 上記の「C-6: ドキュメント整備」のコードブロックを、主要キーの早見表（テーブル）と一緒に直書きする。
+3. **`WXR_IMPORT_ALLOWED_PRIVATE_HOSTS` の本番運用注意**: SSRF 防御を緩める設定であるため本番では空欄のままにする旨を明記。
 
 **未リリースのため Breaking Changes 節は作成しない**。本プラグインは正式リリース前のためユーザーが旧 `config('wxr_import_*')` キーで運用している前提を取らない。
 
