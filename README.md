@@ -105,37 +105,66 @@ WordPress側の情報を引き継ぐため、各エントリーには以下の�
 WXRファイル内のメディアURLを**ローカルパスに書き換えておくと、HTTPダウンロードではなくサーバー上のファイルから直接コピー**してメディアを登録します。
 移行元のWordPressサイトが既に停止している場合や、大量メディアでネットワーク経由のダウンロードを避けたい場合に有効です。
 
-**手順:**
+#### 取り込み元ディレクトリの仕組み
 
-1. WordPressのアップロードディレクトリ（`wp-content/uploads/`）一式を、a-blog cmsが稼働しているサーバーに配置する
-2. WXRファイル（XML）をVSCodeなどで開き、メディアURLのドメイン部分を一括置換する
-   例: `https://example.com/wp-content/uploads/` → `/wp-content/uploads/`
-   （添付ファイル情報だけでなく、本文中のメディアURLも含めてすべて置換してください）
-3. 書き換えたWXRファイルをアップロードして移行を実行する
+LFI 防御の都合上、ローカルパス／`file://` URL から取り込めるのは
+**`WXR_IMPORT_LOCAL_PATH_BASE` で指定したディレクトリ配下のファイルのみ** です。
+デフォルトは `archives/wxr-import/source/`（プラグイン専用の取り込み置き場）。
 
-**置換後に使えるパス形式:**
+運用パターンは 2 通りあります。
 
-- ドキュメントルート相対パス（例: `/wp-content/uploads/2026/01/sample.png`）
-- 絶対パス（例: `/var/www/html/uploads/2026/01/sample.png`）
+#### パターン A: デフォルトの取り込み専用ディレクトリを使う（`.env` 設定不要）
 
-公開ディレクトリにアップロードファイルを置く場合は、a-blog cmsの管理画面以外からアクセスできないよう、配置場所のアクセス制御に注意してください。
+1. WordPress の `wp-content/uploads/` 一式を、a-blog cms 設置サーバの
+   **`archives/wxr-import/source/` 配下** にコピーする。
 
-## 設定階層
+   ```
+   archives/wxr-import/source/
+   └── wp-content/
+       └── uploads/
+           └── 2026/01/sample.png
+   ```
 
-本プラグインの設定値は、意味（性格）に応じて 3 層に分けて配置しています。
+2. WXR ファイル（XML）を開き、メディア URL を **`archives/wxr-import/source/` を含むパス** に一括置換する。
+   例:
 
-| 層 | API | 寿命 | 例 |
-|----|-----|------|-----|
-| `.env`（`ablogcms/.env`） | `env('KEY', default)` | デプロイ単位 | パス、許可ホスト、サイズ上限、各種ポーズ |
-| DB コンフィグ | `config('key', default)` | ブログ単位 | （現在未使用） |
-| 管理画面フォーム | `$this->Post->get('key')` | 1 リクエスト | メディア取得・カテゴリ作成・タグ作成の業務判断 |
+   ```
+   https://example.com/wp-content/uploads/
+       → /archives/wxr-import/source/wp-content/uploads/
+   ```
 
-考え方:
+3. 書き換えた WXR ファイルをアップロードして移行を実行する。
 
-- **「環境ごとに変わる」「画面から触らせたくない」「セキュリティに直結する」**設定は `.env`
-- **「今回どう取り込むか」**の業務判断は管理画面フォーム
+#### パターン B: 既存ディレクトリを取り込み元に指定する（`.env` 設定あり）
 
-### 利用可能な `.env` キー
+すでにサーバ上の任意のディレクトリに `wp-content/uploads/` を配置している場合は、
+`.env` で `WXR_IMPORT_LOCAL_PATH_BASE` をそのディレクトリ（または上位ディレクトリ）に合わせます。
+
+1. `.env` に次の設定を追加する（例: ドキュメントルート直下に配置している場合）。
+
+   ```env
+   WXR_IMPORT_LOCAL_PATH_BASE=/var/www/html/
+   ```
+
+2. WXR ファイル内の URL を**ドキュメントルート相対パス**に置換する。
+   例:
+
+   ```
+   https://example.com/wp-content/uploads/  →  /wp-content/uploads/
+   ```
+
+3. 書き換えた WXR ファイルをアップロードして移行を実行する。
+
+#### 共通の注意
+
+- 添付ファイル情報（`<wp:attachment_url>`）だけでなく、**本文中のメディア URL** もすべて置換してください。
+- 受け入れられるパス形式は、`WXR_IMPORT_LOCAL_PATH_BASE` 配下に解決される限り次のいずれでも構いません:
+  - ドキュメントルート相対パス（例: `/path/to/sample.png`）
+  - 絶対パス（例: `/var/www/html/path/to/sample.png`）
+  - `file://` URL（例: `file:///var/www/html/path/to/sample.png`）
+- 公開ディレクトリにアップロードファイルを置く場合は、a-blog cms の管理画面以外からアクセスできないよう、配置場所のアクセス制御に注意してください。
+
+## .env による環境設定
 
 全キーは省略可能で、省略時は安全側のデフォルトが適用されます。
 
