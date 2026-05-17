@@ -174,7 +174,7 @@ LFI 防御の都合上、ローカルパス／`file://` URL から取り込め�
 |------|------|-----------|
 | `WXR_IMPORT_LOCAL_PATH_BASE` | ローカル取り込みの許可ベース | `archives/wxr-import/source/` |
 | `WXR_IMPORT_ALLOWED_PRIVATE_HOSTS` | 開発環境用に許可するプライベートホスト名 | 空（厳格にブロック） |
-| `WXR_IMPORT_MAX_FILE_SIZE` | メディア最大サイズ（バイト） | `52428800`（50MB） |
+| `WXR_IMPORT_MAX_FILE_SIZE` | メディアファイル1個あたりの最大サイズ（バイト） | `52428800`（50MB） |
 | `WXR_IMPORT_DOWNLOAD_DELAY_MICROSECONDS` | 同一ドメインへの連続 DL 間隔 | `500000`（0.5 秒） |
 | `WXR_IMPORT_BATCH_PAUSE_MICROSECONDS` | エントリーバッチ間のポーズ | `0`（無効） |
 | `WXR_IMPORT_DEFAULT_BATCH_SIZE` | バッチサイズの既定値 | `50` |
@@ -203,8 +203,11 @@ WXR_IMPORT_LOCAL_PATH_BASE=
 # デフォルト: 空（厳格にブロック）
 WXR_IMPORT_ALLOWED_PRIVATE_HOSTS=
 
-# メディアファイルの最大サイズ（バイト）。
-# php.ini の upload_max_filesize / post_max_size と整合する値を設定してください。
+# メディアファイル1個あたりの最大サイズ（バイト）。
+# 個々の画像／動画／文書ファイルがこのサイズを超えると取り込みを拒否します。
+# 過大なファイルでディスクを逼迫させないための上限です。
+# WXR XML 本体のサイズは PHP の upload_max_filesize / post_max_size 側で
+# 別途制限されます（本キーとは独立）。
 # デフォルト: 52428800（50MB）
 WXR_IMPORT_MAX_FILE_SIZE=
 
