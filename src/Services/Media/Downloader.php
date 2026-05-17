@@ -407,17 +407,26 @@ class Downloader
      * Media::storeFile() 内の allowlist と同じ構成にすることで、Downloader 通過後の
      * 保存段階で再度はじかれてエラーループになる事象を防ぐ。
      *
+     * configArray() がブログコンテキスト未確定などで空を返すケースに備え、
+     * 基本セット（jpg/png/gif/webp/svg/pdf/...）をフォールバックとして必ず含める。
+     *
      * @return array<int, string>
      */
     private function buildAllowedExtensions(): array
     {
+        $base = [
+            'svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff',
+            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv',
+            'zip', 'mp3', 'mp4', 'mov', 'webm',
+        ];
+
         return array_values(array_unique(array_merge(
-            ['svg'],
-            configArray('file_extension_image'),
-            configArray('file_extension_document'),
-            configArray('file_extension_archive'),
-            configArray('file_extension_movie'),
-            configArray('file_extension_audio')
+            $base,
+            configArray('file_extension_image') ?: [],
+            configArray('file_extension_document') ?: [],
+            configArray('file_extension_archive') ?: [],
+            configArray('file_extension_movie') ?: [],
+            configArray('file_extension_audio') ?: []
         )));
     }
 
@@ -433,9 +442,12 @@ class Downloader
         $allowed = $this->buildAllowedExtensions();
         if (!$validator->validateAllowedByContent($localPath, $allowed)) {
             $sniffed = $validator->sniffMimeType($localPath);
+            $sniffedExtensions = $sniffed !== null ? $validator->getExtensionsFromMimeType($sniffed) : [];
             Logger::warning('【WXRImport plugin】許可されないMIMEを検出し、ファイルを破棄', [
                 'path' => $localPath,
                 'sniffed_mime' => $sniffed,
+                'sniffed_extensions' => $sniffedExtensions,
+                'allowed_extensions' => $allowed,
             ]);
             if (LocalStorage::exists($localPath)) {
                 LocalStorage::remove($localPath);
