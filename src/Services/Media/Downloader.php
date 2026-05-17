@@ -27,10 +27,10 @@ class Downloader
 
 
     /** @var int 最大ファイルサイズ（バイト） */
-    private int $maxFileSize = 50 * 1024 * 1024; // 50MB
+    private int $maxFileSize;
 
     /** @var int ダウンロード間隔（マイクロ秒） */
-    private int $downloadDelay = 500000; // 0.5秒
+    private int $downloadDelay;
 
     /** @var array<string, float> ドメイン別の最後のアクセス時刻 */
     private static array $lastAccessTimes = [];
@@ -47,21 +47,27 @@ class Downloader
     {
         $this->downloadDir = ARCHIVES_DIR . 'wxr-import/media/';
 
-        // ローカル取り込みの許可ベース。デフォルトは取り込み専用ディレクトリ。
-        // config('wxr_import_local_path_base') で運用上書き可能。
-        $configured = config('wxr_import_local_path_base');
-        $this->localPathBase = is_string($configured) && $configured !== ''
-            ? $configured
-            : ARCHIVES_DIR . 'wxr-import/source/';
+        // 環境固定値は .env から第二引数のデフォルトつきで読む。
+        // ablogcms/.env に WXR_IMPORT_* キーを書けば上書きできる。
+
+        // ローカル取り込みの許可ベース。
+        $this->localPathBase = (string) env(
+            'WXR_IMPORT_LOCAL_PATH_BASE',
+            ARCHIVES_DIR . 'wxr-import/source/'
+        );
 
         // 開発環境向けに、private 解決されても許可するホスト名を opt-in で設定可能にする。
-        // 例: config('wxr_import_allowed_private_hosts', 'host.docker.internal,localhost')
-        // デフォルトは空（厳格にブロック）。
-        $allowedHosts = config('wxr_import_allowed_private_hosts');
-        if (!is_string($allowedHosts) && !is_array($allowedHosts)) {
-            $allowedHosts = [];
-        }
-        $this->allowedPrivateHosts = $this->normalizeHostList($allowedHosts);
+        // 例: WXR_IMPORT_ALLOWED_PRIVATE_HOSTS=host.docker.internal,localhost
+        // 本番は空欄のまま（SSRF 対策を厳格に保つ）。
+        $this->allowedPrivateHosts = $this->normalizeHostList(
+            (string) env('WXR_IMPORT_ALLOWED_PRIVATE_HOSTS', '')
+        );
+
+        // メディア最大サイズ（バイト）。デフォルト 50MB。
+        $this->maxFileSize = (int) env('WXR_IMPORT_MAX_FILE_SIZE', '52428800');
+
+        // 同一ドメインへの連続ダウンロード間隔（マイクロ秒）。デフォルト 0.5 秒。
+        $this->downloadDelay = (int) env('WXR_IMPORT_DOWNLOAD_DELAY_MICROSECONDS', '500000');
 
         $this->ensureDownloadDirectory();
         $this->ensureLocalPathBase();
