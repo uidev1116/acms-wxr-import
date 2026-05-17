@@ -13,6 +13,7 @@ use Acms\Plugins\WxrImport\Services\WXR\WXRCategory;
 use Acms\Plugins\WxrImport\Services\Media\Downloader;
 use Acms\Plugins\WxrImport\Services\Content\ContentProcessor;
 use Acms\Plugins\WxrImport\Services\Helpers\MemoryLimit;
+use Acms\Plugins\WxrImport\Services\Import\MediaInfoMap;
 
 /**
  * 最適化されたバッチ処理システム
@@ -192,6 +193,10 @@ class BatchProcessor
             } else {
                 $mediaMapping = [];
             }
+
+            // ContentProcessor の N+1 を避けるため、エントリー処理に入る前に
+            // mediaMapping に含まれる media_id をまとめて取得しておく。
+            $this->contentProcessor->setMediaInfoMap(MediaInfoMap::load($mediaMapping));
 
             // エントリーを処理
             $entryResults = $this->processEntryBatch(

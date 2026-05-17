@@ -4,20 +4,35 @@ declare(strict_types=1);
 
 namespace Acms\Plugins\WxrImport\Services\Content;
 
-use SQL;
-use Acms\Services\Facades\Database;
 use Acms\Services\Facades\Logger;
 use Acms\Services\Facades\Common;
+use Acms\Plugins\WxrImport\Services\Import\MediaInfoMap;
 
 /**
  * WordPressコンテンツをa-blog cmsブロックエディター形式に変換する処理
  */
 class ContentProcessor
 {
-
-
-    /** @var array<string, string> メディアURLのマッピングキャッシュ */
+    /** @var array<int, string> media_id → 変換後 URL のキャッシュ */
     private array $mediaUrlCache = [];
+
+    private MediaInfoMap $mediaInfoMap;
+
+    public function __construct()
+    {
+        $this->mediaInfoMap = MediaInfoMap::empty();
+    }
+
+    /**
+     * BatchProcessor がバッチ開始前に呼び、media テーブルの一括取得結果を注入する。
+     * 注入されない場合は空 Map のままで、URL 書換はフォールバック（WordPress パス流用）に
+     * 落ちる。
+     */
+    public function setMediaInfoMap(MediaInfoMap $map): void
+    {
+        $this->mediaInfoMap = $map;
+        $this->mediaUrlCache = [];
+    }
 
     /**
      * WordPressコンテンツを処理してa-blog cmsブロックエディター形式に変換
@@ -139,17 +154,15 @@ class ContentProcessor
      */
     private function replaceMediaUrl(string $url, ?int $mediaId = null): string
     {
-        $cacheKey = ($mediaId !== null ? $mediaId . ':' : '') . $url;
-        if (isset($this->mediaUrlCache[$cacheKey])) {
-            return $this->mediaUrlCache[$cacheKey];
-        }
-
         if ($mediaId !== null && $mediaId > 0) {
-            $mediaData = $this->getMediaInfo($mediaId);
+            if (isset($this->mediaUrlCache[$mediaId])) {
+                return $this->mediaUrlCache[$mediaId];
+            }
+            $mediaData = $this->mediaInfoMap->get($mediaId);
             if ($mediaData) {
                 $baseDir = $this->getMediaBaseDirectory($mediaData['type']);
                 $newUrl = '/' . DIR_OFFSET . $baseDir . $mediaData['path'];
-                $this->mediaUrlCache[$cacheKey] = $newUrl;
+                $this->mediaUrlCache[$mediaId] = $newUrl;
                 return $newUrl;
             }
         }
@@ -159,41 +172,20 @@ class ContentProcessor
             $filePath = $matches[1];
             $mediaType = $this->estimateMediaTypeFromUrl($url);
             $baseDir = $this->getMediaBaseDirectory($mediaType);
-            $newUrl = '/' . DIR_OFFSET . $baseDir . $filePath;
-            $this->mediaUrlCache[$cacheKey] = $newUrl;
-            return $newUrl;
+            return '/' . DIR_OFFSET . $baseDir . $filePath;
         }
 
         return $url;
     }
 
     /**
-     * メディア情報を取得
+     * メディア情報を取得（事前にロードされた MediaInfoMap を参照）
      *
-     * @param int $mediaId
-     * @return array{path: string, type: string}|null
+     * @return array{path: string, type: string, filesize: int|string}|null
      */
     private function getMediaInfo(int $mediaId): ?array
     {
-        try {
-            $SQL = SQL::newSelect('media');
-            $SQL->addSelect('media_path', 'media_type');
-            $SQL->addWhereOpr('media_id', $mediaId);
-            $SQL->setLimit(1);
-
-            $result = Database::query($SQL->get(dsn()), 'row');
-            if ($result) {
-                return [
-                    'path' => $result['media_path'],
-                    'type' => $result['media_type']
-                ];
-            }
-        } catch (\Throwable $e) {
-            Logger::error('【WXRImport plugin】メディア情報取得エラー', Common::exceptionArray($e, [
-                'media_id' => $mediaId
-            ]));
-        }
-        return null;
+        return $this->mediaInfoMap->get($mediaId);
     }
 
     /**
