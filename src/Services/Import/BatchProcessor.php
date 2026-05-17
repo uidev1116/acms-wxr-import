@@ -14,6 +14,8 @@ use Acms\Plugins\WxrImport\Services\Media\Downloader;
 use Acms\Plugins\WxrImport\Services\Content\ContentProcessor;
 use Acms\Plugins\WxrImport\Services\Helpers\MemoryLimit;
 use Acms\Plugins\WxrImport\Services\Import\MediaInfoMap;
+use Acms\Plugins\WxrImport\Services\Import\SortValueAllocator;
+use Acms\Services\Entry\EntryRepository;
 
 /**
  * 最適化されたバッチ処理システム
@@ -255,6 +257,9 @@ class BatchProcessor
 
         $progressLogger->addMessage("エントリー処理開始: {$totalEntries}件", 0, 1, false);
 
+        $entryRepository = Container::make('entry.repository');
+        assert($entryRepository instanceof EntryRepository);
+
         foreach (array_chunk($entries, $batchSize) as $batchIndex => $batch) {
             $batchStartTime = microtime(true);
 
@@ -263,12 +268,15 @@ class BatchProcessor
                 0, 1, false
             );
 
+            // バッチ先頭で sort 値の MAX を1回だけ取得し、以降はメモリ上で払い出す
+            $allocator = new SortValueAllocator((int) $settings['target_blog_id'], $entryRepository);
+
             foreach ($batch as $entry) {
                 try {
                     // コンテンツ処理を適用（メディアマッピングがなくても実行）
                     $this->applyContentProcessing($entry, $mediaMapping);
 
-                    $result = $this->entryImporter->importEntry($entry, $settings, $categoryMap, $mediaMapping);
+                    $result = $this->entryImporter->importEntry($entry, $settings, $categoryMap, $mediaMapping, $allocator);
                     $results[] = $result;
 
                     if ($result['success']) {

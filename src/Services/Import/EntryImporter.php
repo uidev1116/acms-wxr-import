@@ -14,7 +14,6 @@ use Acms\Plugins\WxrImport\Services\WXR\WXREntry;
 use Acms\Plugins\WxrImport\Services\Helpers\CodeGenerator;
 use Acms\Plugins\WxrImport\Services\Unit\ContentUnitCreator;
 use Acms\Services\Unit\Repository as UnitRepository;
-use ACMS_RAM;
 
 class EntryImporter
 {
@@ -33,11 +32,11 @@ class EntryImporter
      * @param array<int, int> $mediaMapping WordPress attachment の post_id から a-blog cms media_id へのマッピング
      * @return array{success: bool, entry_id?: int, error?: string}
      */
-    public function importEntry(WXREntry $entry, array $settings, array $categoryMap = [], array $mediaMapping = []): array
+    public function importEntry(WXREntry $entry, array $settings, array $categoryMap = [], array $mediaMapping = [], ?SortValueAllocator $allocator = null): array
     {
         try {
             // 新規エントリーの作成
-            return $this->createNewEntry($entry, $settings, $categoryMap, $mediaMapping);
+            return $this->createNewEntry($entry, $settings, $categoryMap, $mediaMapping, $allocator);
         } catch (\Throwable $th) {
             Logger::error('【WXRImport plugin】エントリーインポートエラー', Common::exceptionArray($th, [
                 'wp_post_id' => $entry->wpPostId,
@@ -66,13 +65,16 @@ class EntryImporter
      * @param array<int, int> $mediaMapping WordPress attachment の post_id から a-blog cms media_id へのマッピング
      * @return array{success: bool, entry_id: int, wp_post_id: int}
      */
-    private function createNewEntry(WXREntry $entry, array $settings, array $categoryMap, array $mediaMapping = []): array
+    private function createNewEntry(WXREntry $entry, array $settings, array $categoryMap, array $mediaMapping = [], ?SortValueAllocator $allocator = null): array
     {
         Database::connection()->beginTransaction();
 
         try {
+            // メインカテゴリーは一度だけ判定し、insertEntryData / associateSubCategories で共用する
+            $mainCategoryId = $this->determineMainCategory($entry, $categoryMap);
+
             // エントリーデータの作成（カテゴリー含む）
-            $eid = $this->insertEntryData($entry, $settings, $categoryMap);
+            $eid = $this->insertEntryData($entry, $settings, $mainCategoryId, $allocator);
             if (!$eid) {
                 throw new \Exception('エントリーデータの挿入に失敗しました');
             }
@@ -84,13 +86,12 @@ class EntryImporter
 
             // サブカテゴリーの関連付け（メインカテゴリー以外）
             if (count($categoryMap) > 0) {
-                $mainCategoryId = $this->determineMainCategory($entry, $categoryMap);
-                $this->associateSubCategories($eid, $entry, $categoryMap, $mainCategoryId);
+                $this->associateSubCategories($eid, (int) $settings['target_blog_id'], $entry, $categoryMap, $mainCategoryId);
             }
 
             // タグの関連付け
             if ($settings['create_tags']) {
-                $this->associateTags($eid, $entry, $settings);
+                $this->associateTags($eid, (int) $settings['target_blog_id'], $entry, $settings);
             }
 
             // WordPress本文をBlockEditorユニットとして保存
@@ -124,16 +125,13 @@ class EntryImporter
      * @param array<int, int> $categoryMap WordPress カテゴリーIDからa-blog cms カテゴリーIDへのマッピング
      * @return int|false
      */
-    private function insertEntryData(WXREntry $entry, array $settings, array $categoryMap)
+    private function insertEntryData(WXREntry $entry, array $settings, ?int $mainCategoryId, ?SortValueAllocator $allocator)
     {
         $sql = SQL::newInsert('entry');
 
         // 基本情報
         $entryId = (int)Database::query(SQL::nextval('entry_id', dsn()), 'seq');
-        $blogId = $settings['target_blog_id'];
-
-        // メインカテゴリーを決定
-        $mainCategoryId = $this->determineMainCategory($entry, $categoryMap);
+        $blogId = (int) $settings['target_blog_id'];
 
         $sql->addInsert('entry_id', $entryId);
         $sql->addInsert('entry_title', $entry->title);
@@ -156,10 +154,17 @@ class EntryImporter
         }
         $sql->addInsert('entry_updated_datetime', date('Y-m-d H:i:s'));
 
-        // その他の属性
-        $sql->addInsert('entry_sort', $this->nextEntrySort($blogId));
-        $sql->addInsert('entry_user_sort', $this->nextEntryUserSort(SUID, $blogId));
-        $sql->addInsert('entry_category_sort', $this->nextEntryCategorySort($mainCategoryId, $blogId));
+        // その他の属性: SortValueAllocator が渡されていればメモリ上で払い出す。
+        // 渡されない場合のフォールバックとして従来の MAX クエリ経路も残す。
+        if ($allocator !== null) {
+            $sql->addInsert('entry_sort', $allocator->allocateEntrySort());
+            $sql->addInsert('entry_user_sort', $allocator->allocateUserSort((int) SUID));
+            $sql->addInsert('entry_category_sort', $allocator->allocateCategorySort($mainCategoryId));
+        } else {
+            $sql->addInsert('entry_sort', $this->nextEntrySort($blogId));
+            $sql->addInsert('entry_user_sort', $this->nextEntryUserSort((int) SUID, $blogId));
+            $sql->addInsert('entry_category_sort', $this->nextEntryCategorySort($mainCategoryId, $blogId));
+        }
 
         Database::query($sql->get(dsn()), 'exec');
 
@@ -272,7 +277,7 @@ class EntryImporter
      * @param array<int, int> $categoryMap WordPress カテゴリーIDからa-blog cms カテゴリーIDへのマッピング
      * @param int|null $mainCategoryId メインカテゴリーID
      */
-    private function associateSubCategories(int $eid, WXREntry $entry, array $categoryMap, ?int $mainCategoryId): void
+    private function associateSubCategories(int $eid, int $blogId, WXREntry $entry, array $categoryMap, ?int $mainCategoryId): void
     {
         $categoryIds = [];
 
@@ -291,19 +296,25 @@ class EntryImporter
             return;
         }
 
-        $blogId = ACMS_RAM::entryBlog($eid);
-
         // メインカテゴリー以外をサブカテゴリーとして関連付け
         $subCategoryIds = array_filter($categoryIds, function ($id) use ($mainCategoryId) {
             return $id !== $mainCategoryId;
         });
+        if ($subCategoryIds === []) {
+            return;
+        }
 
+        // ablogcms/php/Services/Entry/Helper.php の bulk insert パターンに倣う
+        $bulk = SQL::newBulkInsert('entry_sub_category');
         foreach ($subCategoryIds as $categoryId) {
-            $sql = SQL::newInsert('entry_sub_category');
-            $sql->addInsert('entry_sub_category_eid', $eid);
-            $sql->addInsert('entry_sub_category_id', $categoryId);
-            $sql->addInsert('entry_sub_category_blog_id', $blogId);
-            Database::query($sql->get(dsn()), 'exec');
+            $bulk->addInsert([
+                'entry_sub_category_eid' => $eid,
+                'entry_sub_category_id' => $categoryId,
+                'entry_sub_category_blog_id' => $blogId,
+            ]);
+        }
+        if ($bulk->hasData()) {
+            Database::query($bulk->get(dsn()), 'exec');
         }
     }
 
@@ -317,7 +328,7 @@ class EntryImporter
      *     create_tags: bool,
      * } $settings
      */
-    private function associateTags(int $eid, WXREntry $entry, array $settings): void
+    private function associateTags(int $eid, int $blogId, WXREntry $entry, array $settings): void
     {
         if (count($entry->tags) === 0) {
             return;
@@ -326,8 +337,7 @@ class EntryImporter
             return;
         }
 
-        $blogId = ACMS_RAM::entryBlog($eid);
-
+        $bulk = SQL::newBulkInsert('tag');
         $sort = 0;
         foreach ($entry->tags as $tag) {
             if (!$tag->isValid()) {
@@ -336,14 +346,16 @@ class EntryImporter
 
             $data = $tag->toAcmsTagArray($eid, $blogId, $sort);
 
-            $sql = SQL::newInsert('tag');
-            $sql->addInsert('tag_name', $data['tag_name']);
-            $sql->addInsert('tag_entry_id', $data['tag_entry_id']);
-            $sql->addInsert('tag_blog_id', $data['tag_blog_id']);
-            $sql->addInsert('tag_sort', $data['tag_sort']);
-
-            Database::query($sql->get(dsn()), 'exec');
+            $bulk->addInsert([
+                'tag_name' => $data['tag_name'],
+                'tag_entry_id' => $data['tag_entry_id'],
+                'tag_blog_id' => $data['tag_blog_id'],
+                'tag_sort' => $data['tag_sort'],
+            ]);
             $sort++;
+        }
+        if ($bulk->hasData()) {
+            Database::query($bulk->get(dsn()), 'exec');
         }
     }
 
