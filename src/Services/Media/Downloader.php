@@ -401,10 +401,19 @@ class Downloader
         return $fileName;
     }
 
-    /** @var array<int, string> 画像系の許可拡張子（コアは image/* で判定するため、プラグイン側で固定保持） */
+    /**
+     * 画像系の許可拡張子。
+     *
+     * a-blog cms コアの ImageEngine が扱える MIME マップ
+     * (ablogcms/php/Services/Image/Contracts/ImageEngine.php) と整合させる:
+     *   image/gif / image/png / image/vnd.wap.wbmp / image/xbm / image/jpeg / image/webp
+     * これに、Media::storeFile() で別経路（sanitizeSvg）扱いされる svg を追加。
+     * コアが処理できない画像形式（avif/heic/ico/tiff など）は除外する。
+     *
+     * @var array<int, string>
+     */
     private const IMAGE_EXTENSIONS = [
-        'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'svg',
-        'avif', 'heic', 'heif', 'ico',
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'xbm', 'svg',
     ];
 
     /**
