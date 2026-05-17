@@ -218,48 +218,52 @@ class Parser
             $xpath->registerNamespace($prefix, $uri);
         }
 
+        // item 要素を context に固定し、相対 XPath で子要素を参照する
+        // （descendant-or-self の `//` ではなく `./` を使うことでサブツリー走査を回避）
+        $itemEl = $doc->documentElement;
+
         // 基本情報の抽出
         $item = [
-            'title' => $this->getXPathValue($xpath, '//title'),
-            'link' => $this->getXPathValue($xpath, '//link'),
-            'pubDate' => $this->getXPathValue($xpath, '//pubDate'),
-            'creator' => $this->getXPathValue($xpath, '//dc:creator'),
-            'guid' => $this->getXPathValue($xpath, '//guid'),
-            'description' => $this->getXPathValue($xpath, '//description'),
-            'content' => $this->getXPathValue($xpath, '//content:encoded'),
-            'excerpt' => $this->getXPathValue($xpath, '//excerpt:encoded'),
-            'post_id' => (int)$this->getXPathValue($xpath, '//wp:post_id'),
-            'post_date' => $this->getXPathValue($xpath, '//wp:post_date'),
-            'post_date_gmt' => $this->getXPathValue($xpath, '//wp:post_date_gmt'),
-            'comment_status' => $this->getXPathValue($xpath, '//wp:comment_status'),
-            'ping_status' => $this->getXPathValue($xpath, '//wp:ping_status'),
-            'post_name' => $this->getXPathValue($xpath, '//wp:post_name'),
-            'status' => $this->getXPathValue($xpath, '//wp:status'),
-            'post_parent' => (int)$this->getXPathValue($xpath, '//wp:post_parent'),
-            'menu_order' => (int)$this->getXPathValue($xpath, '//wp:menu_order'),
-            'post_type' => $this->getXPathValue($xpath, '//wp:post_type'),
-            'post_password' => $this->getXPathValue($xpath, '//wp:post_password'),
-            'is_sticky' => $this->getXPathValue($xpath, '//wp:is_sticky'),
+            'title' => $this->getXPathValue($xpath, './title', $itemEl),
+            'link' => $this->getXPathValue($xpath, './link', $itemEl),
+            'pubDate' => $this->getXPathValue($xpath, './pubDate', $itemEl),
+            'creator' => $this->getXPathValue($xpath, './dc:creator', $itemEl),
+            'guid' => $this->getXPathValue($xpath, './guid', $itemEl),
+            'description' => $this->getXPathValue($xpath, './description', $itemEl),
+            'content' => $this->getXPathValue($xpath, './content:encoded', $itemEl),
+            'excerpt' => $this->getXPathValue($xpath, './excerpt:encoded', $itemEl),
+            'post_id' => (int)$this->getXPathValue($xpath, './wp:post_id', $itemEl),
+            'post_date' => $this->getXPathValue($xpath, './wp:post_date', $itemEl),
+            'post_date_gmt' => $this->getXPathValue($xpath, './wp:post_date_gmt', $itemEl),
+            'comment_status' => $this->getXPathValue($xpath, './wp:comment_status', $itemEl),
+            'ping_status' => $this->getXPathValue($xpath, './wp:ping_status', $itemEl),
+            'post_name' => $this->getXPathValue($xpath, './wp:post_name', $itemEl),
+            'status' => $this->getXPathValue($xpath, './wp:status', $itemEl),
+            'post_parent' => (int)$this->getXPathValue($xpath, './wp:post_parent', $itemEl),
+            'menu_order' => (int)$this->getXPathValue($xpath, './wp:menu_order', $itemEl),
+            'post_type' => $this->getXPathValue($xpath, './wp:post_type', $itemEl),
+            'post_password' => $this->getXPathValue($xpath, './wp:post_password', $itemEl),
+            'is_sticky' => $this->getXPathValue($xpath, './wp:is_sticky', $itemEl),
         ];
 
         // 添付ファイル情報（メディア）
         if ($item['post_type'] === 'attachment') {
-            $item['attachment_url'] = $this->getXPathValue($xpath, '//wp:attachment_url');
+            $item['attachment_url'] = $this->getXPathValue($xpath, './wp:attachment_url', $itemEl);
         }
 
-        // カテゴリー・タグの抽出
-        $item['categories'] = $this->extractTerms($xpath, 'category');
-        $item['tags'] = $this->extractTerms($xpath, 'post_tag');
+        // カテゴリー・タグの抽出（item を context に固定）
+        $item['categories'] = $this->extractTerms($xpath, 'category', $itemEl);
+        $item['tags'] = $this->extractTerms($xpath, 'post_tag', $itemEl);
 
         // term_idを補完
         $this->supplementTermIds($item['categories'], $this->categoriesMap);
         $this->supplementTermIds($item['tags'], $this->tagsMap);
 
         // カスタムフィールドの抽出
-        $item['postmeta'] = $this->extractPostMeta($xpath);
+        $item['postmeta'] = $this->extractPostMeta($xpath, $itemEl);
 
         // コメントの抽出
-        $item['comments'] = $this->extractComments($xpath);
+        $item['comments'] = $this->extractComments($xpath, $itemEl);
 
         return $item;
     }
@@ -431,15 +435,16 @@ class Parser
      *     taxonomy: string
      * }> 重複を除いたターム配列
      */
-    private function extractTerms(\DOMXPath $xpath, string $taxonomy): array
+    private function extractTerms(\DOMXPath $xpath, string $taxonomy, ?\DOMNode $context = null): array
     {
         // taxonomyが想定外の場合は空配列を返す
         if (!in_array($taxonomy, ['category', 'post_tag'])) {
             return [];
         }
 
-        $terms = [];
-        $nodes = $xpath->query(".//category[@domain='{$taxonomy}']");
+        $uniqueTerms = [];
+        $seenSlugs = []; // slug をキーにした O(1) dedup
+        $nodes = $xpath->query("./category[@domain='{$taxonomy}']", $context);
 
         foreach ($nodes as $node) {
             if (!$node instanceof \DOMElement) {
@@ -454,25 +459,17 @@ class Parser
                 $slug = CodeGenerator::generateSlug($name);
             }
 
-            if ($slug) {
-                $terms[] = [
-                    'term_id' => null, // 後で補完
-                    'slug' => $slug,
-                    'name' => $name,
-                    'taxonomy' => $taxonomy,
-                ];
+            if ($slug === '' || isset($seenSlugs[$slug])) {
+                continue;
             }
 
-        }
-
-        // 重複slug排除
-        $uniqueTerms = [];
-        $seenSlugs = [];
-        foreach ($terms as $term) {
-            if (!in_array($term['slug'], $seenSlugs)) {
-                $uniqueTerms[] = $term;
-                $seenSlugs[] = $term['slug'];
-            }
+            $seenSlugs[$slug] = true;
+            $uniqueTerms[] = [
+                'term_id' => null, // 後で補完
+                'slug' => $slug,
+                'name' => $name,
+                'taxonomy' => $taxonomy,
+            ];
         }
 
         return $uniqueTerms;
@@ -516,14 +513,14 @@ class Parser
      * @param \DOMXPath $xpath 投稿アイテムのDOMXPath
      * @return array<string, string> カスタムフィールドの連想配列（key => value）
      */
-    private function extractPostMeta(\DOMXPath $xpath): array
+    private function extractPostMeta(\DOMXPath $xpath, ?\DOMNode $context = null): array
     {
         $meta = [];
-        $nodes = $xpath->query('//wp:postmeta');
+        $nodes = $xpath->query('./wp:postmeta', $context);
 
         foreach ($nodes as $node) {
-            $key = $this->getXPathValue($xpath, './/wp:meta_key', $node);
-            $value = $this->getXPathValue($xpath, './/wp:meta_value', $node);
+            $key = $this->getXPathValue($xpath, './wp:meta_key', $node);
+            $value = $this->getXPathValue($xpath, './wp:meta_value', $node);
 
             if ($key) {
                 $meta[$key] = $value;
@@ -552,23 +549,23 @@ class Parser
      *     comment_parent: int
      * }> コメントの配列
      */
-    private function extractComments(\DOMXPath $xpath): array
+    private function extractComments(\DOMXPath $xpath, ?\DOMNode $context = null): array
     {
         $comments = [];
-        $nodes = $xpath->query('//wp:comment');
+        $nodes = $xpath->query('./wp:comment', $context);
 
         foreach ($nodes as $node) {
             $comments[] = [
-                'comment_id' => (int)$this->getXPathValue($xpath, './/wp:comment_id', $node),
-                'comment_author' => $this->getXPathValue($xpath, './/wp:comment_author', $node),
-                'comment_author_email' => $this->getXPathValue($xpath, './/wp:comment_author_email', $node),
-                'comment_author_url' => $this->getXPathValue($xpath, './/wp:comment_author_url', $node),
-                'comment_date' => $this->getXPathValue($xpath, './/wp:comment_date', $node),
-                'comment_date_gmt' => $this->getXPathValue($xpath, './/wp:comment_date_gmt', $node),
-                'comment_content' => $this->getXPathValue($xpath, './/wp:comment_content', $node),
-                'comment_approved' => $this->getXPathValue($xpath, './/wp:comment_approved', $node),
-                'comment_type' => $this->getXPathValue($xpath, './/wp:comment_type', $node),
-                'comment_parent' => (int)$this->getXPathValue($xpath, './/wp:comment_parent', $node),
+                'comment_id' => (int)$this->getXPathValue($xpath, './wp:comment_id', $node),
+                'comment_author' => $this->getXPathValue($xpath, './wp:comment_author', $node),
+                'comment_author_email' => $this->getXPathValue($xpath, './wp:comment_author_email', $node),
+                'comment_author_url' => $this->getXPathValue($xpath, './wp:comment_author_url', $node),
+                'comment_date' => $this->getXPathValue($xpath, './wp:comment_date', $node),
+                'comment_date_gmt' => $this->getXPathValue($xpath, './wp:comment_date_gmt', $node),
+                'comment_content' => $this->getXPathValue($xpath, './wp:comment_content', $node),
+                'comment_approved' => $this->getXPathValue($xpath, './wp:comment_approved', $node),
+                'comment_type' => $this->getXPathValue($xpath, './wp:comment_type', $node),
+                'comment_parent' => (int)$this->getXPathValue($xpath, './wp:comment_parent', $node),
             ];
         }
 
