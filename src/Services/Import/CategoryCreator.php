@@ -73,38 +73,62 @@ class CategoryCreator
      */
     private function sortCategoriesByHierarchy(array $categories): array
     {
-        $sorted = [];
-        $processed = [];
-
-        // 親カテゴリーから順に処理
-        $maxIterations = count($categories) * 2; // 無限ループ防止
-        $iteration = 0;
-
-        while (count($processed) < count($categories) && $iteration < $maxIterations) {
-            foreach ($categories as $category) {
-                if (in_array($category->termId, $processed, true)) {
-                    continue;
-                }
-
-                $parentId = $category->parentId ?? 0;
-
-                // 親がいない、または親が既に処理済みの場合
-                if ($parentId === 0 || in_array($parentId, $processed, true)) {
-                    $sorted[] = $category;
-                    $processed[] = $category->termId;
-                }
+        // termId -> WXRCategory の連想配列を作って O(1) ルックアップを可能にする
+        $byId = [];
+        foreach ($categories as $c) {
+            if ($c->termId !== null) {
+                $byId[$c->termId] = $c;
             }
-            $iteration++;
         }
 
-        // 残ったカテゴリー（循環参照など）も追加
-        foreach ($categories as $category) {
-            if (!in_array($category->termId, $processed, true)) {
-                $sorted[] = $category;
-            }
+        $sorted = [];
+        $visited = [];   // termId => true
+        $visiting = [];  // termId => true（循環検出用）
+
+        foreach ($categories as $c) {
+            $this->topologicalVisit($c, $byId, $visited, $visiting, $sorted);
         }
 
         return $sorted;
+    }
+
+    /**
+     * DFS で親 → 子の順に並べる。循環は visiting フラグで検出して末尾扱いにする。
+     *
+     * @param array<int, WXRCategory> $byId
+     * @param array<int, true> $visited
+     * @param array<int, true> $visiting
+     * @param list<WXRCategory> $sorted
+     */
+    private function topologicalVisit(
+        WXRCategory $c,
+        array $byId,
+        array &$visited,
+        array &$visiting,
+        array &$sorted
+    ): void {
+        $termId = $c->termId;
+        if ($termId === null) {
+            $sorted[] = $c;
+            return;
+        }
+        if (isset($visited[$termId])) {
+            return;
+        }
+        if (isset($visiting[$termId])) {
+            // 循環参照 → 旧実装と同じく末尾追加扱いにする（積極的にエラーは出さない）
+            return;
+        }
+        $visiting[$termId] = true;
+
+        $parentId = $c->parentId ?? 0;
+        if ($parentId !== 0 && isset($byId[$parentId])) {
+            $this->topologicalVisit($byId[$parentId], $byId, $visited, $visiting, $sorted);
+        }
+
+        unset($visiting[$termId]);
+        $visited[$termId] = true;
+        $sorted[] = $c;
     }
 
     /**
