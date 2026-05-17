@@ -401,28 +401,30 @@ class Downloader
         return $fileName;
     }
 
+    /** @var array<int, string> 画像系の許可拡張子（コアは image/* で判定するため、プラグイン側で固定保持） */
+    private const IMAGE_EXTENSIONS = [
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'svg',
+        'avif', 'heic', 'heif', 'ico',
+    ];
+
     /**
      * 取り込んだファイルの実MIMEを検証する許可拡張子リストを構築する。
      *
-     * Media::storeFile() 内の allowlist と同じ構成にすることで、Downloader 通過後の
-     * 保存段階で再度はじかれてエラーループになる事象を防ぐ。
-     *
-     * configArray() がブログコンテキスト未確定などで空を返すケースに備え、
-     * 基本セット（jpg/png/gif/webp/svg/pdf/...）をフォールバックとして必ず含める。
+     * 設計方針:
+     *   - 画像系（SVG 含む）はプラグイン側で固定セット（IMAGE_EXTENSIONS）。
+     *     a-blog cms コアは MIME が image/* かどうかで画像扱いを決めており、
+     *     画像用の拡張子コンフィグキーは存在しないため、Symfony Mime と
+     *     intersect させるための具体的拡張子リストを自前で持つ必要がある。
+     *   - 文書／アーカイブ／動画／音声は a-blog cms のコンフィグセット
+     *     (file_extension_document など) に従う。これは Media::storeFile() の
+     *     allowlist と同じ構成。
      *
      * @return array<int, string>
      */
     private function buildAllowedExtensions(): array
     {
-        $base = [
-            'svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff',
-            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv',
-            'zip', 'mp3', 'mp4', 'mov', 'webm',
-        ];
-
         return array_values(array_unique(array_merge(
-            $base,
-            configArray('file_extension_image') ?: [],
+            self::IMAGE_EXTENSIONS,
             configArray('file_extension_document') ?: [],
             configArray('file_extension_archive') ?: [],
             configArray('file_extension_movie') ?: [],
