@@ -6,6 +6,7 @@ namespace Acms\Plugins\WxrImport;
 
 use ACMS_App;
 use Acms\Services\Facades\Application as Container;
+use Acms\Services\Facades\LocalStorage;
 use Acms\Services\Common\InjectTemplate;
 use Acms\Services\Common\Lock as CommonLock;
 
@@ -123,7 +124,7 @@ class ServiceProvider extends ACMS_App
         }
 
         // ディレクトリ権限チェック
-        if (!is_writable(CACHE_DIR)) {
+        if (!LocalStorage::isWritable(CACHE_DIR)) {
             return false;
         }
 
@@ -132,28 +133,16 @@ class ServiceProvider extends ACMS_App
 
     /**
      * インストールするときの処理
-     * データベーステーブルの初期化など
+     *
+     * 進捗 JSON とロックファイルは CACHE_DIR 直下に置かれ、Logger / Lock サービスが
+     * 利用時に自動生成する。メディアの保存先（ARCHIVES_DIR 配下）も Downloader 側で
+     * ensureDownloadDirectory() / ensureLocalPathBase() が必要時に作るため、
+     * インストールフックで明示的に準備するものは無い。
      *
      * @return void
      */
     public function install()
     {
-        // アップロード用ディレクトリの作成
-        $uploadDir = CACHE_DIR . 'wxr-import/uploads/';
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
-        }
-
-        // 進捗ファイル用ディレクトリの作成
-        $progressDir = CACHE_DIR . 'wxr-import/progress/';
-        if (!is_dir($progressDir)) {
-            mkdir($progressDir, 0755, true);
-        }
-
-        // .htaccessファイルでディレクトリへの直接アクセスを防止
-        $htaccessContent = "Order deny,allow\nDeny from all\n";
-        file_put_contents($uploadDir . '.htaccess', $htaccessContent);
-        file_put_contents($progressDir . '.htaccess', $htaccessContent);
     }
 
     /**
