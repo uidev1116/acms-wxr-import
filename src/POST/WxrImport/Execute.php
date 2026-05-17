@@ -146,11 +146,11 @@ class Execute extends ACMS_POST
             $logger->addMessage('WXRファイルを解析中...', 5, 1, false);
 
             // エントリー・メディア収集
-            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXREntry> $entries */
+            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXREntry> $entries */
             $entries = [];
-            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXREntry> $media */
+            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXREntry> $media */
             $medias = [];
-            /** @var array<Acms\Plugins\WxrImport\Services\WXR\WXRCategory> $categories */
+            /** @var array<\Acms\Plugins\WxrImport\Services\WXR\WXRCategory> $categories */
             $categories = [];
             foreach ($this->parser->parse($filePath) as $item) {
                 if ($item['post_type'] === 'attachment') {
@@ -198,7 +198,6 @@ class Execute extends ACMS_POST
         } finally {
             // アップロードされたファイルは自動的に削除されるため、明示的な削除は不要
             $lockService->release();
-            sleep(5);
             $logger->terminate();
         }
     }

@@ -290,9 +290,12 @@ class BatchProcessor
                 (50 / ceil($totalEntries / $batchSize)), 1, true
             );
 
-            // バッチ間の小休止（負荷軽減）
+            // バッチ間のポーズ（設定で延長可能、デフォルト 0）
             if ($batchIndex < ceil($totalEntries / $batchSize) - 1) {
-                usleep(100000); // 0.1秒
+                $pause = (int) (config('wxr_import_batch_pause_microseconds') ?: 0);
+                if ($pause > 0) {
+                    usleep($pause);
+                }
             }
         }
 
@@ -391,10 +394,8 @@ class BatchProcessor
                     ]));
                 }
 
-                // メディア処理間の遅延（外部サーバーへの負荷軽減）
-                if ($media !== end($batch)) {
-                    usleep(100000); // 0.1秒
-                }
+                // メディア処理間の遅延は Downloader::applyRateLimit() に委譲（HTTP 経路のみ）。
+                // ローカルパス取り込みでは無条件の usleep を発生させない。
             }
 
             $processedCount = ($batchIndex + 1) * $batchSize;
@@ -405,10 +406,7 @@ class BatchProcessor
                 (25 / ceil($totalMedia / $batchSize)), 1, true
             );
 
-            // バッチ間の遅延（サーバー負荷軽減）
-            if ($batchIndex < ceil($totalMedia / $batchSize) - 1) {
-                usleep(200000); // 0.2秒
-            }
+            // バッチ間の遅延は Downloader::applyRateLimit() に委譲する。
         }
 
         return [
