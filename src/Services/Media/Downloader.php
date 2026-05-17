@@ -35,6 +35,14 @@ class Downloader
     /** @var array<string, float> ドメイン別の最後のアクセス時刻 */
     private static array $lastAccessTimes = [];
 
+    /**
+     * ホスト名 → 解決済み IP のキャッシュ。
+     * インポート1回（プロセス1回）の寿命だけ保持し、同一ホスト URL の DNS 解決を都度走らせない。
+     *
+     * @var array<string, list<string>|false>
+     */
+    private static array $dnsCache = [];
+
     public function __construct()
     {
         $this->downloadDir = ARCHIVES_DIR . 'wxr-import/media/';
@@ -746,7 +754,7 @@ class Downloader
             return ['ok' => true, 'reason' => ''];
         }
 
-        $ips = gethostbynamel($host);
+        $ips = $this->resolveHost($host);
         if ($ips === false || $ips === []) {
             return ['ok' => false, 'reason' => 'ホスト名解決に失敗しました: ' . $host];
         }
@@ -756,6 +764,27 @@ class Downloader
             }
         }
         return ['ok' => true, 'reason' => ''];
+    }
+
+    /**
+     * ホスト名解決をプロセス内でキャッシュする。
+     *
+     * インポートは単発のバックグラウンド処理で、同一ホストから多数のメディアを取りに行く
+     * のが典型。都度 gethostbynamel() を呼ぶと数千件規模で無視できない遅延になるため、
+     * キャッシュする。SSRF 防御の観点では、リダイレクト各ホップで本関数を通すことで
+     * 「DNS rebinding を完全には防げない」既存仕様（旧 security-hardening AC-3）と等価。
+     *
+     * @return list<string>|false
+     */
+    private function resolveHost(string $host): array|false
+    {
+        $key = strtolower($host);
+        if (array_key_exists($key, self::$dnsCache)) {
+            return self::$dnsCache[$key];
+        }
+        $ips = gethostbynamel($host);
+        self::$dnsCache[$key] = $ips;
+        return $ips;
     }
 
     /**
