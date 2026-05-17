@@ -155,9 +155,8 @@ class Parser
             $this->reader->close();
             libxml_clear_errors();
             libxml_use_internal_errors($previousInternalErrors);
-            if ($cleanedPath !== null && is_file($cleanedPath)) {
-                @unlink($cleanedPath);
-            }
+            // LocalStorage::remove() は内部で exists() / isFile() チェックを行う
+            LocalStorage::remove($cleanedPath);
         }
     }
 

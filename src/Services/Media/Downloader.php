@@ -244,14 +244,14 @@ class Downloader
             fclose($dst);
 
             if ($copied === false) {
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 return [
                     'success' => false,
                     'error' => 'ファイルのコピーに失敗しました: ' . $localPath,
                 ];
             }
             if ($copied > $this->maxFileSize) {
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 return [
                     'success' => false,
                     'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($copied),
@@ -315,14 +315,14 @@ class Downloader
                 $httpCode = $result['http_code'];
 
                 if ($httpCode !== 200) {
-                    @unlink($localPath);
+                    LocalStorage::remove($localPath);
                     return [
                         'success' => false,
                         'error' => sprintf('ダウンロード失敗 (HTTP %d)', $httpCode)
                     ];
                 }
             } catch (\Throwable $th) {
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 return [
                     'success' => false,
                     'error' => 'ダウンロードに失敗しました: ' . $th->getMessage()
@@ -330,9 +330,9 @@ class Downloader
             }
 
             // ファイルサイズチェック（書き出し済みファイルのサイズで判定）
-            $fileSize = (int) @filesize($localPath);
+            $fileSize = LocalStorage::exists($localPath) ? (int) LocalStorage::getFileSize($localPath) : 0;
             if ($fileSize === 0) {
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 return [
                     'success' => false,
                     'error' => 'ダウンロードしたファイルが空です'
@@ -340,7 +340,7 @@ class Downloader
             }
 
             if ($fileSize > $this->maxFileSize) {
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 return [
                     'success' => false,
                     'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($fileSize)
@@ -601,7 +601,7 @@ class Downloader
             $location = $hopResult['location'] ?? '';
             if ($hopResult['http_code'] >= 300 && $hopResult['http_code'] < 400 && $location !== '') {
                 // 3xx のレスポンスボディ（通常は短いHTMLや空）は破棄
-                @unlink($localPath);
+                LocalStorage::remove($localPath);
                 if ($hop === $maxHops) {
                     return [
                         'success' => false,
@@ -681,7 +681,7 @@ class Downloader
 
         if ($ok === false) {
             $err = curl_error($curl) ?: 'Unknown error';
-            @unlink($localPath);
+            LocalStorage::remove($localPath);
             return [
                 'success' => false,
                 'error' => 'HTTPダウンロードエラー: ' . $err,
