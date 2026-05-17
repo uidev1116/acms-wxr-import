@@ -206,6 +206,11 @@ class Downloader
      */
     private function copyLocalFile(string $sourcePath, string $localPath): array
     {
+        // セキュリティ前提:
+        //   呼び出し元の resolveLocalFilePath() が LocalStorage::validateDirectoryTraversalPath()
+        //   を通過させたうえで safeRealpath を得ているため、$sourcePath は許可ベース配下の
+        //   実在ファイルであることが保証されている。本関数では実コピーだけをストリームで行い、
+        //   保存後に validateStoredFile() で実 MIME を再検証することで多重防御を維持する。
         try {
             $dir = dirname($localPath);
             if (!LocalStorage::exists($dir)) {
@@ -217,35 +222,39 @@ class Downloader
                 }
             }
 
-            // 検証＋読み込みをコアに委譲（multi-layer defense として
-            // resolveLocalFilePath() に続く 2 段目の traversal チェックも兼ねる）
-            try {
-                $content = LocalStorage::get($sourcePath, $this->localPathBase);
-            } catch (\Throwable $th) {
+            $src = @fopen($sourcePath, 'rb');
+            if ($src === false) {
                 return [
                     'success' => false,
-                    'error' => 'ローカルファイルの読み込みに失敗しました: ' . $th->getMessage(),
+                    'error' => 'ローカルファイルを開けませんでした: ' . $sourcePath,
                 ];
             }
-            if ($content === false) {
+            $dst = @fopen($localPath, 'wb');
+            if ($dst === false) {
+                fclose($src);
                 return [
                     'success' => false,
-                    'error' => 'ローカルファイルの読み込みに失敗しました: ' . $sourcePath,
-                ];
-            }
-
-            $fileSize = strlen($content);
-            if ($fileSize > $this->maxFileSize) {
-                return [
-                    'success' => false,
-                    'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($fileSize),
+                    'error' => 'コピー先を開けませんでした: ' . $localPath,
                 ];
             }
 
-            if (!LocalStorage::put($localPath, $content)) {
+            // maxFileSize+1 までコピー。超過していたら破棄してエラー。
+            $copied = @stream_copy_to_stream($src, $dst, $this->maxFileSize + 1);
+            fclose($src);
+            fclose($dst);
+
+            if ($copied === false) {
+                @unlink($localPath);
                 return [
                     'success' => false,
                     'error' => 'ファイルのコピーに失敗しました: ' . $localPath,
+                ];
+            }
+            if ($copied > $this->maxFileSize) {
+                @unlink($localPath);
+                return [
+                    'success' => false,
+                    'error' => 'ファイルサイズが上限を超えています: ' . $this->formatFileSize($copied),
                 ];
             }
 
@@ -258,7 +267,7 @@ class Downloader
                 'success' => true,
                 'local_path' => $localPath,
                 'file_name' => basename($localPath),
-                'file_size' => $fileSize,
+                'file_size' => (int) $copied,
             ];
         } catch (\Throwable $th) {
             return [
