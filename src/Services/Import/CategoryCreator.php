@@ -33,35 +33,225 @@ class CategoryCreator
     public function createCategories(array $categories, array $settings): array
     {
         $mapping = [];
-        $blogId = $settings['target_blog_id'];
+        $blogId = (int) $settings['target_blog_id'];
 
         // 階層構造を考慮した順序で処理
         $sortedCategories = $this->sortCategoriesByHierarchy($categories);
 
+        // 既存と新規を切り分ける
+        $toCreate = [];
         foreach ($sortedCategories as $category) {
             try {
-                // 既存のカテゴリーをチェック
                 $existingId = $this->findExistingCategory($category->generateCode(), $blogId);
                 if ($existingId) {
                     $mapping[$category->termId] = $existingId;
                     continue;
                 }
+                $toCreate[] = $category;
+            } catch (\Throwable $th) {
+                Logger::error('【WXRImport plugin】既存カテゴリー判定に失敗しました', Common::exceptionArray($th, [
+                    'wp_term_id' => $category->termId,
+                    'name' => $category->name,
+                ]));
+            }
+        }
 
-                // 新規カテゴリーを作成
+        if ($toCreate === []) {
+            return $mapping;
+        }
+
+        // 全ての親が「新規カテゴリ集合内」または「ルート (parent=0)」なら、
+        // 既存ツリーへの干渉なしで一括 INSERT できる（最もよくあるケース＝新規ブログへの初回取り込み）。
+        // 既存カテゴリを親とする新規がある場合は、Nested Set の途中挿入が必要なため
+        // 安全側に倒して旧フロー（1件ずつ作成）にフォールバックする。
+        $newTermIds = [];
+        foreach ($toCreate as $c) {
+            if ($c->termId !== null) {
+                $newTermIds[$c->termId] = true;
+            }
+        }
+        $fastPathOk = true;
+        foreach ($toCreate as $c) {
+            $parentId = $c->parentId ?? 0;
+            if ($parentId !== 0 && !isset($newTermIds[$parentId])) {
+                $fastPathOk = false;
+                break;
+            }
+        }
+
+        if ($fastPathOk) {
+            try {
+                $this->createCategoriesBulk($toCreate, $mapping, $blogId);
+                return $mapping;
+            } catch (\Throwable $th) {
+                Logger::error('【WXRImport plugin】カテゴリー一括作成に失敗、1件ずつ作成にフォールバックします', Common::exceptionArray($th, [
+                    'count' => count($toCreate),
+                ]));
+                // フォールバックへ
+            }
+        }
+
+        // フォールバック: 1件ずつ既存ロジックで作成（既存ツリー途中挿入の場合もこちら）
+        foreach ($toCreate as $category) {
+            try {
                 $categoryId = $this->createCategory($category, $mapping, $blogId);
                 if ($categoryId) {
                     $mapping[$category->termId] = $categoryId;
                 }
-
             } catch (\Throwable $th) {
                 Logger::error('【WXRImport plugin】カテゴリー作成に失敗しました', Common::exceptionArray($th, [
                     'wp_term_id' => $category->termId,
-                    'name' => $category->name
+                    'name' => $category->name,
                 ]));
             }
         }
 
         return $mapping;
+    }
+
+    /**
+     * 新規カテゴリ群を一括 INSERT する高速経路。
+     *
+     * 前提:
+     *   - 全カテゴリの親が「新規カテゴリ集合内」または「parent=0（ルート）」であること。
+     *     既存カテゴリを親とするノードが含まれる場合、本メソッドは呼ばれない（呼び出し元でフォールバック）。
+     *   - $toCreate はトポロジカル順（親 → 子の順）でソート済み。
+     *
+     * 既存ツリーへの干渉:
+     *   - 既存ツリーの最大 right 値を 1 回 SELECT で取得し、それより後ろに新規ツリーを丸ごと追加する。
+     *   - 既存行に対する UPDATE は発生しない。
+     *
+     * @param list<WXRCategory> $toCreate
+     * @param array<int, int>   $mapping  termId → newCategoryId
+     */
+    private function createCategoriesBulk(array $toCreate, array &$mapping, int $blogId): void
+    {
+        // 子のインデックスを termId で引けるよう構築（0 = ルート）
+        /** @var array<int, list<WXRCategory>> $children */
+        $children = [];
+        $roots = [];
+        foreach ($toCreate as $c) {
+            $pid = $c->parentId ?? 0;
+            if ($pid === 0 || !isset($children[$pid])) {
+                // initialize list
+            }
+            if ($pid === 0) {
+                $roots[] = $c;
+            } else {
+                $children[$pid][] = $c;
+            }
+        }
+
+        // 既存ツリーの右端を取得
+        $existingMaxRight = $this->getMaxCategoryRight($blogId);
+        $counter = $existingMaxRight;
+
+        /** @var list<array{id:int, parent:int, left:int, right:int, sort:int, category:WXRCategory}> $records */
+        $records = [];
+
+        // 各カテゴリの新 ID を先に確保し、mapping に積んでおく（子の処理時に親 ID を参照するため）
+        $idByTermId = [];
+        foreach ($toCreate as $c) {
+            $newId = (int) Database::query(SQL::nextval('category_id', dsn()), 'seq');
+            $idByTermId[$c->termId] = $newId;
+            $mapping[$c->termId] = $newId;
+        }
+
+        // DFS で left/right を計算し $records に追記する
+        $rootSort = 1;
+        foreach ($roots as $root) {
+            $this->assignNestedSet($root, 0, $rootSort, $children, $idByTermId, $counter, $records);
+            $rootSort++;
+        }
+
+        // 全カテゴリを一括 INSERT
+        $bulk = SQL::newBulkInsert('category');
+        foreach ($records as $r) {
+            $cat = $r['category'];
+            $code = $this->generateCategoryCode($cat->generateCode(), $blogId);
+            $bulk->addInsert([
+                'category_id'              => $r['id'],
+                'category_parent'          => $r['parent'],
+                'category_sort'            => $r['sort'],
+                'category_left'            => $r['left'],
+                'category_right'           => $r['right'],
+                'category_blog_id'         => $blogId,
+                'category_status'          => 'open',
+                'category_name'            => $cat->getDisplayName(),
+                'category_scope'           => 'local',
+                'category_indexing'        => 'on',
+                'category_code'            => $code,
+                'category_config_set_id'   => null,
+                'category_config_set_scope' => 'local',
+                'category_theme_set_id'    => null,
+                'category_theme_set_scope' => 'local',
+                'category_editor_set_id'   => null,
+                'category_editor_set_scope' => 'local',
+            ]);
+        }
+        if ($bulk->hasData()) {
+            Database::query($bulk->get(dsn()), 'exec');
+        }
+
+        // メタデータ・フルテキストはコア API に従い1件ずつ書き込む
+        foreach ($records as $r) {
+            $this->saveCategoryMetadata($r['id'], $r['category']);
+            Common::saveFulltext('cid', $r['id'], Common::loadCategoryFulltext($r['id']));
+        }
+    }
+
+    /**
+     * DFS で Nested Set の left/right と sort を割り当て、records に追記する。
+     *
+     * @param array<int, list<WXRCategory>> $children
+     * @param array<int, int> $idByTermId
+     * @param list<array{id:int, parent:int, left:int, right:int, sort:int, category:WXRCategory}> $records
+     */
+    private function assignNestedSet(
+        WXRCategory $c,
+        int $parentDbId,
+        int $sort,
+        array $children,
+        array $idByTermId,
+        int &$counter,
+        array &$records
+    ): void {
+        $counter++;
+        $left = $counter;
+        $newId = $idByTermId[$c->termId];
+
+        $childList = $children[$c->termId] ?? [];
+        $childSort = 1;
+        foreach ($childList as $child) {
+            $this->assignNestedSet($child, $newId, $childSort, $children, $idByTermId, $counter, $records);
+            $childSort++;
+        }
+
+        $counter++;
+        $right = $counter;
+
+        $records[] = [
+            'id' => $newId,
+            'parent' => $parentDbId,
+            'left' => $left,
+            'right' => $right,
+            'sort' => $sort,
+            'category' => $c,
+        ];
+    }
+
+    /**
+     * 既存カテゴリツリーの最大 right 値を取得
+     */
+    private function getMaxCategoryRight(int $blogId): int
+    {
+        $sql = SQL::newSelect('category');
+        $sql->addSelect('category_right');
+        $sql->addWhereOpr('category_blog_id', $blogId);
+        $sql->setOrder('category_right', 'DESC');
+        $sql->setLimit(1);
+        $value = Database::query($sql->get(dsn()), 'one');
+        return $value ? (int) $value : 0;
     }
 
 
