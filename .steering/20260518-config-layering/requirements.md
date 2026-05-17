@@ -82,9 +82,9 @@ a-blog cms 標準で `.env`（`vlucas/phpdotenv`）と `env(string $key, string 
 - リポジトリルートに `.env.example` を新設し、上記6キーをコメント付きで記載する。
 - `README.md` に「設定階層」セクションを追加し、フォーム／`.env` / `config()` の使い分け方針を1段落で明文化する。
 
-### AC-7: 後方互換とロールバック
-- 既存ユーザーが既に「コンフィグ > 任意の設定値」で `wxr_import_local_path_base` などを設定済みの場合、本改修後は無効化される。README の Breaking Changes 節にこの旨を明記し、`.env` 移行方法を案内する。
+### AC-7: ロールバック容易性
 - 各タスクは独立してコミット可能とし、問題発生時に粒度単位で revert できるようにする。
+- 本プラグインは未リリースのため、旧 `config('wxr_import_*')` キーから新 `WXR_IMPORT_*` への移行ガイドは作成しない（ユーザーが本番運用していない前提）。
 
 ## 制約事項
 

@@ -291,18 +291,9 @@ WXRImport は設定値を性格別に3層に分ける:
 ### 利用可能な .env キー
 
 `.env.example` を参照。
-
-## Breaking Changes (Ver. X.Y.Z)
-
-- 管理画面の「詳細設定」セクション（ベースディレクトリ／プライベート許可ホスト）を削除した。
-- 旧バージョンで「コンフィグ > 任意の設定値」に `wxr_import_local_path_base` / `wxr_import_allowed_private_hosts` / `wxr_import_batch_pause_microseconds` を設定していた環境は、`.env` への移行が必要。設定キーの対応は次のとおり:
-
-| 旧 config キー | 新 .env キー |
-|---------------|------------|
-| `wxr_import_local_path_base` | `WXR_IMPORT_LOCAL_PATH_BASE` |
-| `wxr_import_allowed_private_hosts` | `WXR_IMPORT_ALLOWED_PRIVATE_HOSTS` |
-| `wxr_import_batch_pause_microseconds` | `WXR_IMPORT_BATCH_PAUSE_MICROSECONDS` |
 ```
+
+**未リリースのため Breaking Changes 節は作成しない**。本プラグインは正式リリース前のためユーザーが旧 `config('wxr_import_*')` キーで運用している前提を取らない。
 
 ---
 
@@ -344,5 +335,5 @@ WXRImport は設定値を性格別に3層に分ける:
 
 - 各タスクは独立コミット。問題発生時は粒度単位で `git revert`。
 - `.env.example` / README の追加は文字通り「追加」のみで挙動には影響しないため、コードコミットと分離して扱う。
-- `Downloader::configure()` の API 縮小は呼び出し元（`BatchProcessor::processAll()`）と同時にコミットすることで、PHP のメソッドシグネチャ不整合（不要引数渡し）を発生させない。
-- 「コンフィグ > 任意の設定値」で旧キーを使っていた環境への移行は **README 案内のみ**。コード側でフォールバック（旧 `config()` 経由を残す）は採用しない（読み取り経路を二重化すると今回の整理意図が薄れる）。緊急ロールバックが必要な場合は Plugin のバージョンを 1 つ戻して旧来の `config()` 経路に戻す運用とする。
+- `Downloader::configure()` の API 縮小は呼び出し元（`BatchProcessor::processAll()`）が `configure()` を呼ばなくなった後に行うことで、PHP のメソッドシグネチャ不整合（不要引数渡し）を発生させない（tasklist.md の実行順序 1→3→2 で担保）。
+- 未リリースのため旧 `config('wxr_import_*')` 経路のフォールバックは不要。コード側で旧キーを読む実装は残さない。

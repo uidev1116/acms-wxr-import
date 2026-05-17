@@ -155,18 +155,18 @@
 
 ---
 
-## Task 7: README.md の更新（AC-6, AC-7）
+## Task 7: README.md の更新（AC-6）
 
 **ファイル**: `README.md`
 
 - [ ] design.md の「README.md への追記」セクションを参考に、以下を追加する:
   - 「## 設定階層」セクション（`.env` / `config()` / フォーム の役割を1表で示す）
-  - 「## Breaking Changes」セクション（旧 `wxr_import_*` キーから `WXR_IMPORT_*` への移行マップ）
-  - `.env.example` への参照リンク
+  - `.env.example` への参照
+- [ ] **未リリースのため Breaking Changes 節は作成しない**。
 - [ ] コミット: `Document the .env-based configuration layer in README`
 
 **完了条件**:
-- README に「設定階層」「Breaking Changes」の2セクションが存在し、`.env.example` への参照がある。
+- README に「設定階層」セクションが存在し、`.env.example` への参照がある。
 
 ---
 
