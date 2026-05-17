@@ -102,6 +102,12 @@ class BatchProcessor
             'category_success' => 0,
             'total_time' => 0,
             'memory_peak' => 0,
+            'timings' => [
+                'category' => 0.0,
+                'media' => 0.0,
+                'entry' => 0.0,
+                'total' => 0.0,
+            ],
         ];
 
         try {
@@ -115,9 +121,14 @@ class BatchProcessor
             $categoryMap = [];
             if ($settings['create_categories'] && count($categories) > 0) {
                 $progressLogger->addMessage('カテゴリーを作成中...', 5, 1, false);
+                $categoryStart = microtime(true);
                 $categoryMap = $this->processCategoryCreation($categories, $settings);
+                $results['timings']['category'] = microtime(true) - $categoryStart;
                 $results['category_success'] = count($categoryMap);
-                $progressLogger->addMessage('カテゴリー作成完了: ' . count($categoryMap) . '件', 5, 1, true);
+                $progressLogger->addMessage(
+                    'カテゴリー作成完了: ' . count($categoryMap) . '件 (' . number_format($results['timings']['category'], 2) . '秒)',
+                    5, 1, true
+                );
             }
 
             // 2. 既存のprocessCompleteメソッドを呼び出し
@@ -128,8 +139,23 @@ class BatchProcessor
             $results['entry_error'] = $processResults['entry_error'];
             $results['media_success'] = $processResults['media_success'];
             $results['media_error'] = $processResults['media_error'];
+            $results['timings']['media'] = $processResults['timings']['media'] ?? 0.0;
+            $results['timings']['entry'] = $processResults['timings']['entry'] ?? 0.0;
             $results['total_time'] = microtime(true) - $startTime;
+            $results['timings']['total'] = $results['total_time'];
             $results['memory_peak'] = memory_get_peak_usage(true) - $startMemory;
+
+            $progressLogger->addMessage(
+                sprintf(
+                    '移行完了サマリ: total %s秒 / category %s秒 / media %s秒 / entry %s秒 / peak %s MB',
+                    number_format($results['timings']['total'], 2),
+                    number_format($results['timings']['category'], 2),
+                    number_format($results['timings']['media'], 2),
+                    number_format($results['timings']['entry'], 2),
+                    number_format($results['memory_peak'] / 1024 / 1024, 1)
+                ),
+                0, 1, true
+            );
 
             return $results;
 
@@ -183,12 +209,18 @@ class BatchProcessor
             'media_error' => 0,
             'total_time' => 0,
             'memory_peak' => 0,
+            'timings' => [
+                'media' => 0.0,
+                'entry' => 0.0,
+            ],
         ];
 
         try {
             // メディアファイルを優先して処理（エントリー処理でURL書き換えに必要）
             if ($settings['include_media'] && count($medias) > 0) {
+                $mediaStart = microtime(true);
                 $mediaResults = $this->processMediaBatch($medias, $settings, $progressLogger);
+                $results['timings']['media'] = microtime(true) - $mediaStart;
                 $results['media_success'] = $mediaResults['success_count'];
                 $results['media_error'] = $mediaResults['error_count'];
 
@@ -203,6 +235,7 @@ class BatchProcessor
             $this->contentProcessor->setMediaInfoMap(MediaInfoMap::load($mediaMapping));
 
             // エントリーを処理
+            $entryStart = microtime(true);
             $entryResults = $this->processEntryBatch(
                 $entries,
                 $settings,
@@ -211,6 +244,7 @@ class BatchProcessor
                 $progressLogger,
                 $expectedEntries
             );
+            $results['timings']['entry'] = microtime(true) - $entryStart;
             $results['entry_success'] = $entryResults['success_count'];
             $results['entry_error'] = $entryResults['error_count'];
 

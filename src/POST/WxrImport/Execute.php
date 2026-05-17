@@ -212,6 +212,18 @@ class Execute extends ACMS_POST
             );
 
             $logger->addMessage('WordPress移行が完了しました', 10, 1, true);
+
+            // 改修後の AC-1 / AC-3 判定材料として恒久ログにもサマリを残す
+            Logger::info('【WXRImport plugin】移行完了サマリ', [
+                'entry_success' => $batchResults['entry_success'] ?? 0,
+                'entry_error' => $batchResults['entry_error'] ?? 0,
+                'media_success' => $batchResults['media_success'] ?? 0,
+                'media_error' => $batchResults['media_error'] ?? 0,
+                'category_success' => $batchResults['category_success'] ?? 0,
+                'timings' => $batchResults['timings'] ?? [],
+                'memory_peak_bytes' => $batchResults['memory_peak'] ?? 0,
+            ]);
+
             $logger->success();
 
 
